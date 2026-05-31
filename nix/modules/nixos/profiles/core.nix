@@ -56,9 +56,11 @@ in
     enable = true;
     clean.enable = true;
     clean.extraArgs = "--keep-since 14d --keep 5";
-    # dotfilesPath = self.outPath — nh resolves it for `nh os build/switch`
-    # from any cwd.
-    flake = dotfilesPath;
+    # path: re-reads the working tree on every eval, so uncommitted edits
+    # are visible to `nh os build` (which CLAUDE.md mandates running
+    # before commit). dotfilesPath (= self.outPath) used to freeze a
+    # /nix/store snapshot per-generation, hiding in-progress changes.
+    flake = "path:${cloneTarget}";
   };
 
   time.timeZone = "America/Los_Angeles";
