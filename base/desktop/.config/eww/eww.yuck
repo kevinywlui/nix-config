@@ -11,7 +11,7 @@
 (defpoll time     :interval "1s"  `date +%H:%M`)
 (defpoll day      :interval "60s" `date +'%A, %B %-d'`)
 
-(defpoll nightlight :interval "30s"
+(defpoll nightlight :interval "1s"
   :initial '{"state":"off","text":"DAY","class":"nightlight-off"}'
   `~/.local/bin/nightlight.sh status-eww`)
 
