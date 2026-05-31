@@ -1,0 +1,148 @@
+* {
+  all: unset;
+  font-family: "MesloLGS Nerd Font", monospace;
+  font-size: 13px;
+}
+
+window#bar {
+  background-color: #282828;
+  color: #dddddd;
+}
+
+window#clock {
+  background-color: transparent;
+}
+
+// ---- Workspaces ----
+
+.workspace {
+  padding: 0 8px;
+  background-color: #1d2021;
+  color: #a89984;
+  border-bottom: 3px solid transparent;
+  min-height: 32px;
+}
+
+.workspace.focused {
+  background-color: #458588;
+  color: #fbf1c7;
+  border-bottom: 3px solid #458588;
+}
+
+.workspace.urgent {
+  background-color: #cc241d;
+  color: #dddddd;
+}
+
+// ---- Mode indicator ----
+
+.mode {
+  background-color: #d79921;
+  color: #282828;
+  padding: 0 8px;
+  min-height: 32px;
+}
+
+// ---- Nightlight pill ----
+//
+// All four states are always visible.  Color alone communicates urgency;
+// the label text confirms it.  Left-click opens nightlight-menu.sh (rofi).
+//
+// Gruvbox palette used throughout:
+//   #cc241d  gruvbox red      — aggressive, "stop everything"
+//   #d79921  gruvbox yellow   — amber, temporary state
+//   #b57614  gruvbox orange   — muted amber, softer than yellow, "tonight off"
+//   #928374  gruvbox gray     — recessive, daytime default
+//   #fbf1c7  gruvbox cream    — max contrast on dark backgrounds
+//   #282828  gruvbox bg       — dark text on light backgrounds
+//
+// nightlight-off      "DAY"          transparent bg, dim gray text
+//                                    Most-seen state (14+ hr/day). Must be quiet.
+//                                    No background fill — blends into the bar.
+//
+// nightlight-on       "NIGHT"        red bg, cream text
+//                                    Aggressive — this is the whole point.
+//                                    #cc241d (gruvbox bright red, not dark red).
+//
+// nightlight-paused   "PAUSED 28m"   amber bg, dark text
+//                                    Warm but not alarming. Countdown always shown.
+//                                    #d79921 keeps distance from red (distinct state).
+//
+// nightlight-disabled "OFF TONIGHT"  orange-tinged muted bg, light muted text
+//                                    Signals deliberate choice, not a system error.
+//                                    Darker than paused so it reads as "settled/done".
+//                                    #b57614 bg + #fbf1c7 text: legible at 11-13px.
+
+.nightlight-off {
+  padding: 0 12px;
+  min-height: 32px;
+  background-color: transparent;
+  color: #928374;     // gruvbox gray — recessive, doesn't compete with clock/audio
+}
+
+.nightlight-on {
+  padding: 0 12px;
+  min-height: 32px;
+  background-color: #cc241d;   // gruvbox bright red
+  color: #fbf1c7;               // gruvbox cream
+}
+
+.nightlight-paused {
+  padding: 0 12px;
+  min-height: 32px;
+  background-color: #d79921;   // gruvbox yellow-amber
+  color: #282828;               // gruvbox bg — dark text on amber
+}
+
+.nightlight-disabled {
+  padding: 0 12px;
+  min-height: 32px;
+  background-color: #b57614;   // gruvbox dark orange — deliberate, not broken
+  color: #fbf1c7;               // gruvbox cream — legible at 12px on this bg
+}
+
+// ---- Right-side modules ----
+
+.audio {
+  padding: 0 12px;
+  min-height: 32px;
+}
+
+.audio-active {
+  color: #689d68;
+}
+
+.audio-muted {
+  color: #a89984;
+}
+
+.battery,
+.clock {
+  padding: 0 12px;
+  color: #dddddd;
+  min-height: 32px;
+}
+
+.battery.charging {
+  color: #689d68;
+}
+
+.battery.warning {
+  color: #d79921;
+}
+
+.battery.critical {
+  color: #cc241d;
+}
+
+// ---- Background clock ----
+
+.bg-clock-time {
+  font-size: 120px;
+  color: #dddddd;
+}
+
+.bg-clock-date {
+  font-size: 24px;
+  color: #a89984;
+}

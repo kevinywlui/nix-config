@@ -1,0 +1,97 @@
+configuration {
+    modi:                "drun,run";
+    show-icons:          true;
+    drun-display-format: "{name}";
+    matching:            "fuzzy";
+    lines:               10;
+    sort:                true;
+    sorting-method:      "fzf";
+}
+
+* {
+    /* Gruvbox palette */
+    bg:     #282828;
+    bg1:    #3c3836;
+    fg:     #ebdbb2;
+    fg-dim: #a89984;
+    accent: #458588;
+    red:    #cc241d;
+
+    /* Override default solarized theme variables so they don't bleed through */
+    background:                  #282828;
+    foreground:                  #ebdbb2;
+    lightbg:                     #3c3836;
+    lightfg:                     #a89984;
+    normal-background:           #282828;
+    normal-foreground:           #ebdbb2;
+    alternate-normal-background: #282828;
+    alternate-normal-foreground: #ebdbb2;
+    selected-normal-background:  #458588;
+    selected-normal-foreground:  #fbf1c7;
+    active-background:           #282828;
+    active-foreground:           #458588;
+    selected-active-background:  #458588;
+    selected-active-foreground:  #fbf1c7;
+    urgent-background:           #282828;
+    urgent-foreground:           #fb4934;
+    selected-urgent-background:  #cc241d;
+    selected-urgent-foreground:  #fbf1c7;
+    alternate-active-background: #282828;
+    alternate-active-foreground: #458588;
+    alternate-urgent-background: #282828;
+    alternate-urgent-foreground: #fb4934;
+    separatorcolor:              #504945;
+}
+
+window {
+    background-color: @bg;
+    border:           2px;
+    border-color:     @accent;
+    border-radius:    6px;
+    width:            600px;
+}
+
+mainbox {
+    padding: 12px;
+}
+
+inputbar {
+    background-color: @bg1;
+    border-radius:    4px;
+    padding:          8px 12px;
+    margin:           0px 0px 8px 0px;
+    children:         [prompt, entry];
+}
+
+prompt {
+    background-color: transparent;
+    text-color:       @accent;
+    padding:          0px 8px 0px 0px;
+}
+
+entry {
+    background-color:  transparent;
+    text-color:        @fg;
+    placeholder-color: @fg-dim;
+}
+
+listview {
+    background-color: transparent;
+    lines:            10;
+    scrollbar:        false;
+    spacing:          2px;
+}
+
+element {
+    padding:      6px 8px;
+    border-radius: 4px;
+}
+
+element-icon {
+    size:    1.2em;
+    padding: 0px 8px 0px 0px;
+}
+
+element-text {
+    vertical-align: 0.5;
+}

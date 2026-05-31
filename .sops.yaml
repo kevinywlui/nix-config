@@ -1,0 +1,17 @@
+keys:
+  - &fw13  age1qd9puq84707clm7j86ee03dfd0e9zlhayj8v0fklle4x0fe03czs7fzptf
+  - &t480  age1qrrkl4ykcdneq5pl4w940j9rfjkwss7zuwat595552z9zpnnppuq0ytp67
+  - &klui  age1z5zat0xlhsajed3nyrkxenhjg26watn9agskuf38cspt4hll5dpqgtccz6
+
+creation_rules:
+  - path_regex: nix/hosts/fw13/secrets\.yaml$
+    key_groups:
+      - age:
+          - *fw13
+          - *klui
+
+  - path_regex: nix/hosts/t480/secrets\.yaml$
+    key_groups:
+      - age:
+          - *t480
+          - *klui

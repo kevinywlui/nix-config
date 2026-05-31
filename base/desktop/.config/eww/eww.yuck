@@ -1,0 +1,130 @@
+;;;; Listeners / polls
+
+(deflisten workspaces
+  :initial "[]"
+  `~/.local/bin/eww-workspaces.sh`)
+
+(defpoll mode :interval "1s"
+  `swaymsg -t get_binding_state 2>/dev/null | jq -r '.name // "default"'`)
+
+(defpoll datetime :interval "10s" `date +'%Y-%m-%d %H:%M:%S'`)
+(defpoll time     :interval "1s"  `date +%H:%M`)
+(defpoll day      :interval "60s" `date +'%A, %B %-d'`)
+
+(defpoll nightlight :interval "30s"
+  :initial '{"state":"off","text":"DAY","class":"nightlight-off"}'
+  `~/.local/bin/nightlight.sh status-eww`)
+
+(defpoll battery :interval "30s"
+  :initial '{"text":"... --%","class":"battery ok"}'
+  `~/.local/bin/eww-battery.sh`)
+
+(defpoll audio :interval "2s"
+  :initial '{"profile":"...","vol_icon":"󰕾","vol_pct":"--%","vol_muted":false,"mic_icon":"󰍬","mic_pct":"--%","mic_muted":false}'
+  `~/.local/bin/eww-audio.sh`)
+
+;;;; Bar widgets
+
+(defwidget nightlight-widget []
+  ; Always visible — all 4 states (nightlight-off/on/paused/disabled).
+  ;
+  ; Left-click:   open rofi dmenu with labeled, state-aware actions.
+  ;               This is the primary interaction path — no muscle-memory required.
+  ;
+  ; Right-click:  fast shortcut for the single most likely action:
+  ;   NIGHT    → pause 30m   (on→pause)
+  ;   PAUSED   → extend +30m (paused→extend, same toggle-pause code path)
+  ;   DAY         → no-op    (off state; nothing useful to shortcut)
+  ;   OFF TONIGHT → no-op    (ambiguous intent; use the menu)
+  ;
+  ; No middle-click: the disable action is available via the menu.
+  ; Removing middle-click prevents accidental fires on a 32px target.
+  ; setsid -f detaches the menu into its own session.  eww re-renders the bar
+  ; every 1s (the mode/time polls) and SIGKILLs any :onclick child still alive,
+  ; which orphans rofi and kills the dispatch before the selection runs.
+  ; Detaching puts nightlight-menu.sh outside eww's process tree so it survives.
+  (button
+    :class {nightlight.class}
+    :visible true
+    :onclick "setsid -f ~/.local/bin/nightlight-menu.sh"
+    :onrightclick "~/.local/bin/nightlight.sh toggle-pause"
+    {nightlight.text}))
+
+(defwidget workspace-btn [ws]
+  (button
+    :class {ws.focused ? "workspace focused" : ws.urgent ? "workspace urgent" : "workspace"}
+    :onclick "swaymsg workspace ${ws.name}"
+    {ws.name}))
+
+(defwidget workspaces-widget []
+  (box :class "workspaces" :orientation "h" :space-evenly false
+    (for ws in workspaces
+      (workspace-btn :ws ws))))
+
+(defwidget mode-widget []
+  (box :class "mode" :visible {mode != "default"}
+    (label :text " ${mode}")))
+
+(defwidget audio-widget []
+  (eventbox
+    :onclick       "~/.local/bin/audio-switch.sh"
+    :onrightclick  "pactl set-sink-mute @DEFAULT_SINK@ toggle"
+    :onmiddleclick "pactl set-source-mute @DEFAULT_SOURCE@ toggle"
+    :onscroll      "if [[ '{}' == 'up' ]]; then pamixer --increase 5; else pamixer --decrease 5; fi"
+    (box :class "audio" :orientation "h" :space-evenly false :spacing 4
+      (label :class "audio-active" :text {audio.profile})
+      (label :class {audio.vol_muted ? "audio-muted" : "audio-active"} :text {audio.vol_icon})
+      (label :class {audio.vol_muted ? "audio-muted" : "audio-active"} :text {audio.vol_pct})
+      (label :class {audio.mic_muted ? "audio-muted" : "audio-active"} :text {audio.mic_icon})
+      (label :class {audio.mic_muted ? "audio-muted" : "audio-active"} :text {audio.mic_pct}))))
+
+(defwidget battery-widget []
+  (label :class {battery.class} :text {battery.text}))
+
+(defwidget clock-widget []
+  (label :class "clock" :text datetime))
+
+(defwidget bar-left []
+  (box :orientation "h" :space-evenly false :halign "start"
+    (workspaces-widget)
+    (mode-widget)))
+
+(defwidget bar-right []
+  (box :orientation "h" :space-evenly false :halign "end" :spacing 4
+    (nightlight-widget)
+    (audio-widget)
+    (battery-widget)
+    (clock-widget)
+    (systray :spacing 8)))
+
+(defwidget bar-widget []
+  (centerbox :orientation "h"
+    (bar-left)
+    (box)
+    (bar-right)))
+
+;;;; Background clock widget
+
+(defwidget bg-clock []
+  (box :class "bg-clock-container" :orientation "v" :space-evenly false
+       :halign "center" :valign "center"
+    (label :class "bg-clock-time" :text time)
+    (label :class "bg-clock-date" :text day)))
+
+;;;; Windows
+
+(defwindow bar
+  :monitor 0
+  :geometry (geometry :x "0%" :y "0%" :width "100%" :height "32px" :anchor "top center")
+  :stacking "fg"
+  :exclusive true
+  :focusable false
+  (bar-widget))
+
+(defwindow clock
+  :monitor 0
+  :geometry (geometry :x "0%" :y "0%" :width "100%" :height "100%")
+  :stacking "bg"
+  :exclusive false
+  :focusable false
+  (bg-clock))

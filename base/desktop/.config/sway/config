@@ -1,0 +1,147 @@
+set $mod Mod4
+
+# CapsLock → Super (Mod4), matching .xmodmap behaviour
+input type:keyboard {
+    xkb_options caps:super
+}
+
+# Output geometry managed by nwg-displays ($mod+a); edit via that tool
+include ~/.config/sway/outputs
+
+seat * xcursor_theme Adwaita 32
+
+# Propagate Wayland environment to systemd user units and D-Bus
+exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME=Adwaita XCURSOR_SIZE=32
+exec_always systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XCURSOR_THEME XCURSOR_SIZE
+# Start the gamma relay (after env import so it can reach the compositor),
+# then apply the current dawn/dusk temperature once it is up.
+exec sh -c "systemctl --user start wl-gammarelay-rs.service && systemctl --user start nightlight-curve.service"
+
+exec_always swaybg -c "#282828"
+exec_always sh -c "eww kill; eww open bar; eww open clock"
+exec swayidle -w \
+    timeout 570 'notify-send -u critical "Locking screen in 30 seconds"' \
+        resume 'dunstctl close-all' \
+    timeout 600 'hyprlock' \
+    timeout 720 'swaymsg "output * power off"' \
+    resume 'swaymsg "output * power on"' \
+    before-sleep 'hyprlock' \
+    after-resume 'kill -SIGUSR1 $(pidof swayidle)' \
+    after-resume '~/.local/bin/nightlight.sh --reapply'
+exec_always dunst
+exec udiskie
+exec_always nm-applet --indicator
+exec blueman-applet
+exec Telegram -startintray
+
+floating_modifier $mod normal
+
+bindsym $mod+Return exec kitty
+bindsym $mod+q kill
+bindsym $mod+d exec rofi -show drun
+bindsym Print exec grim -g "$(slurp)" - | wl-copy
+bindsym $mod+a exec nwg-displays
+bindsym $mod+Shift+a exec ~/.local/bin/audio-switch.sh
+bindsym $mod+g exec google-chrome-stable
+bindsym $mod+t exec Telegram
+bindsym $mod+Shift+w exec hyprlock
+# Bedtime mode is driven from the Eww bar widget (left-click menu, right-click
+# toggle-pause).  $mod+n is the keyboard escape hatch — flips bedtime on/off
+# regardless of schedule, and works even if the bar/widget is unavailable.
+bindsym $mod+n exec ~/.local/bin/nightlight.sh toggle
+
+bindsym $mod+period move workspace to output right
+bindsym $mod+comma move workspace to output left
+
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+
+bindsym $mod+b split v
+bindsym $mod+Shift+b split h
+bindsym $mod+f fullscreen
+bindsym $mod+Shift+space floating toggle
+
+bindsym $mod+1 workspace "1"
+bindsym $mod+2 workspace "2"
+bindsym $mod+3 workspace "3"
+bindsym $mod+4 workspace "4"
+bindsym $mod+5 workspace "5"
+bindsym $mod+6 workspace "6"
+bindsym $mod+7 workspace "7"
+bindsym $mod+8 workspace "8"
+bindsym $mod+9 workspace "9"
+bindsym $mod+0 workspace "10"
+
+bindsym $mod+Shift+1 move container to workspace "1"
+bindsym $mod+Shift+2 move container to workspace "2"
+bindsym $mod+Shift+3 move container to workspace "3"
+bindsym $mod+Shift+4 move container to workspace "4"
+bindsym $mod+Shift+5 move container to workspace "5"
+bindsym $mod+Shift+6 move container to workspace "6"
+bindsym $mod+Shift+7 move container to workspace "7"
+bindsym $mod+Shift+8 move container to workspace "8"
+bindsym $mod+Shift+9 move container to workspace "9"
+bindsym $mod+Shift+0 move container to workspace "10"
+
+bindsym $mod+Shift+c reload
+
+mode "resize" {
+    bindsym h resize shrink width 10 px or 10 ppt
+    bindsym j resize grow height 10 px or 10 ppt
+    bindsym k resize shrink height 10 px or 10 ppt
+    bindsym l resize grow width 10 px or 10 ppt
+    bindsym Left resize shrink width 10 px or 10 ppt
+    bindsym Down resize grow height 10 px or 10 ppt
+    bindsym Up resize shrink height 10 px or 10 ppt
+    bindsym Right resize grow width 10 px or 10 ppt
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+bindsym $mod+r mode "resize"
+
+bindsym XF86AudioMute exec pamixer --toggle-mute
+bindgesture swipe:3:up exec pactl set-source-mute @DEFAULT_SOURCE@ toggle
+
+bindsym XF86AudioLowerVolume exec pamixer --decrease 5
+bindsym XF86AudioRaiseVolume exec pamixer --increase 5
+bindsym XF86AudioPlay exec playerctl play-pause
+bindsym XF86AudioPause exec playerctl play-pause
+bindsym XF86AudioNext exec playerctl next
+bindsym XF86AudioPrev exec playerctl previous
+
+bindsym XF86MonBrightnessUp exec light -A 2
+bindsym XF86MonBrightnessDown exec light -U 2
+
+default_border pixel 2
+hide_edge_borders smart
+
+set $bg #282828
+set $red #cc241d
+set $green #98971a
+set $yellow #d79921
+set $blue #458588
+set $purple #b16286
+set $aqua #689d68
+set $gray #a89984
+set $darkgray #1d2021
+set $white #DDDDDD
+
+font pango:monospace 13
+
+# class                 border      backgr      text        indicator   child_border
+client.focused          $blue       $blue       $darkgray   $blue       $blue
+client.focused_inactive $darkgray   $darkgray   $yellow     $blue       $darkgray
+client.unfocused        $darkgray   $darkgray   $yellow     $blue       $darkgray
+client.urgent           $red        $red        $white      $red        $red
+
+
+for_window [window_role="GtkFileChooserDialog"] floating enable
+for_window [window_role="GtkFileChooserDialog"] resize set 2200 1400
+for_window [window_role="GtkFileChooserDialog"] move position center

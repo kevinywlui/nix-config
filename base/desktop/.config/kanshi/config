@@ -1,0 +1,17 @@
+# Matched by monitor description (make+model+serial) so profiles survive port changes.
+# eDP-1 is always the laptop panel; external monitors matched by full description.
+
+profile docked-hp-z27n {
+    output "HP Inc. HP Z27n G2 6CM9450CMR" enable scale 1 mode 2560x1440@59.951Hz position 1440,0
+    output eDP-1 enable scale 2 mode 2880x1920@120.000Hz position 0,0
+}
+
+# Wildcard fallback: any single external — place it to the right of the laptop.
+profile docked-unknown {
+    output eDP-1 enable scale 2 position 0,0
+    output * enable position 1440,0
+}
+
+profile undocked {
+    output eDP-1 enable scale 2 mode 2880x1920@120.000Hz
+}

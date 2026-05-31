@@ -1,0 +1,48 @@
+/* Fix transparent menus and popovers on Wayland (Sway) */
+menu,
+.menu,
+.context-menu {
+  background-color: #282828;
+  color: #ebdbb2;
+  border: 1px solid #504945;
+}
+
+menu > arrow,
+menu > arrow:hover {
+  background-color: #282828;
+  color: #a89984;
+}
+
+menuitem {
+  background-color: transparent;
+  color: #ebdbb2;
+}
+
+menuitem:hover,
+menuitem:selected {
+  background-color: #458588;
+  color: #1d2021;
+}
+
+menuitem:disabled {
+  color: #665c54;
+}
+
+menuseparator {
+  background-color: #504945;
+}
+
+popover.background {
+  background-color: #282828;
+  border: 1px solid #504945;
+}
+
+popover.background > contents {
+  background-color: #282828;
+}
+
+tooltip {
+  background-color: #3c3836;
+  color: #ebdbb2;
+  border: 1px solid #504945;
+}

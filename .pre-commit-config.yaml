@@ -1,0 +1,54 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks
+        entry: gitleaks detect --redact --verbose --no-git
+        language: system
+        pass_filenames: false
+
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        language: system
+        types: [shell]
+        exclude: |
+          (?x)^(
+            base/core/\.zshrc|
+            .*/\.zprofile|
+            base/core/\.p10k\.zsh|
+            .*\.zsh
+          )$
+
+      - id: shfmt
+        name: shfmt
+        entry: shfmt -l -w
+        language: system
+        types: [shell]
+        exclude: |
+          (?x)^(
+            base/core/\.zshrc|
+            .*/\.zprofile|
+            base/core/\.p10k\.zsh|
+            .*\.zsh
+          )$
+
+      - id: nixpkgs-fmt
+        name: nixpkgs-fmt
+        entry: nixpkgs-fmt
+        language: system
+        types: [nix]
+
+      - id: nix-flake-check
+        name: nix flake check
+        entry: nix flake check --no-build
+        language: system
+        files: ^(nix/.*|flake\.nix|flake\.lock)$
+        pass_filenames: false
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
