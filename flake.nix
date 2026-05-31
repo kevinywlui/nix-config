@@ -15,10 +15,14 @@
 
   outputs = { self, nixpkgs, nixos-hardware, disko, home-manager, ... }@inputs:
     let
-      # dotfilesPath is the flake source (a read-only /nix/store path during
-      # evaluation). Consumers that need to *write* to the working tree
-      # (setup-dotfiles) inline ~/Code/dotfiles directly — see profiles/core.nix.
-      dotfilesPath = self.outPath;
+      # dotfilesPath is the live working tree as a literal absolute path.
+      # DO NOT change to self.outPath — that freezes a /nix/store snapshot per
+      # generation, defeating mkOutOfStoreSymlink (edits in base/ would not
+      # surface until rebuild) and making NH_FLAKE generation-variant (causing
+      # stale-env regressions across shell sessions). See CLAUDE.md.
+      # CHANGE-ME if relocating the working tree; keep in sync with
+      # `cloneTarget` in nix/modules/nixos/profiles/core.nix.
+      dotfilesPath = "/home/klui/Code/dotfiles";
 
       nixpkgsConfig = {
         nixpkgs.overlays = [ (import ./nix/overlays inputs) ];

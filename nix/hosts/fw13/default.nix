@@ -1,4 +1,4 @@
-{ pkgs, lib, inputs, dotfilesPath, ... }:
+{ pkgs, lib, inputs, ... }:
 
 {
   imports = [

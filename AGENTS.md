@@ -27,8 +27,17 @@ Home Manager modules in this repository (`nix/modules/home/`) prefer **`mkOutOfS
 
 - **Agent guideline:** Do not migrate these configurations into declarative Nix attributes (e.g., `programs.zsh.shellAliases`) unless they are intended to be NixOS-exclusive.
 
-## `dotfilesPath` is read-only
-`dotfilesPath` (passed as a `specialArgs` value from `flake.nix`) equals `self.outPath` — i.e., the flake source in `/nix/store/...` at evaluation time. **It is read-only.** Never write to it from a Nix module or service. If a helper needs a *writable* working tree (the `setup-dotfiles` bootstrap script is the only one today), it must use a `$HOME`-relative literal instead. See the `cloneTarget` binding in `nix/modules/nixos/profiles/core.nix` for the pattern.
+## `dotfilesPath` points at the live working tree
+`dotfilesPath` (passed as a `specialArgs` value from `flake.nix`) is the literal absolute path `/home/klui/Code/dotfiles` — not `self.outPath`. Two failure modes motivate the literal:
+
+1. **`mkOutOfStoreSymlink` would freeze.** Home Manager symlinks under `base/` are meant to track the live tree (see `base/README.md`). A `self.outPath` value bakes a `/nix/store` snapshot per generation, so edits to `base/` would only surface after a rebuild — defeating the entire cross-platform Stow strategy.
+2. **`NH_FLAKE` would go stale across shells.** `programs.nh.flake = "path:${dotfilesPath}"` is exported into every shell's environment. A per-eval `/nix/store/<hash>-source` value strands already-open shells on the prior generation's snapshot (cf. home-manager#8927). A byte-stable literal makes `NH_FLAKE` generation-invariant, so stale shells still hold the correct value.
+
+**Constraints for contributors:**
+- Do **not** revert `dotfilesPath` to `self.outPath`, `toString ./.`, or any expression whose value varies between evals.
+- Keep the `path:` prefix on `programs.nh.flake = "path:${dotfilesPath}"` — Nix auto-promotes bare absolute paths inside git repos to `git+file:`, which only sees committed HEAD and breaks the build-before-commit workflow.
+- If you relocate the working tree, update the literal in `flake.nix` *and* the `cloneTarget` literal in `nix/modules/nixos/profiles/core.nix`.
+- For helpers that need to *write* into the working tree at activation time (the `setup-dotfiles` bootstrap is the only one today), use a `$HOME`-relative shell literal — Nix string interpolation can't produce `$HOME`.
 
 ## Agent Constraints
 - **Authentication:** AI agents cannot execute **`nh os switch`** or **`sudo nixos-rebuild switch`** because these commands require user authentication (sudo).

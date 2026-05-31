@@ -1,10 +1,10 @@
 { pkgs, inputs, config, dotfilesPath, ... }:
 
 let
-  # setup-dotfiles clones a fresh working tree. It cannot use `dotfilesPath`
-  # (which is `self.outPath` — the read-only flake source in /nix/store at
-  # evaluation time). The clone target is the one literal worth changing if
-  # you ever relocate the working tree.
+  # setup-dotfiles clones into $HOME at activation time and needs a shell-
+  # expandable literal (Nix string interpolation can't produce $HOME). Keep
+  # this in sync with `dotfilesPath` in ../../../../flake.nix if you relocate
+  # the working tree.
   cloneTarget = "$HOME/Code/dotfiles"; # CHANGE-ME if relocating the working tree
   setupDotfiles = pkgs.writeShellApplication {
     name = "setup-dotfiles";
@@ -56,11 +56,11 @@ in
     enable = true;
     clean.enable = true;
     clean.extraArgs = "--keep-since 14d --keep 5";
-    # path: re-reads the working tree on every eval, so uncommitted edits
-    # are visible to `nh os build` (which CLAUDE.md mandates running
-    # before commit). dotfilesPath (= self.outPath) used to freeze a
-    # /nix/store snapshot per-generation, hiding in-progress changes.
-    flake = "path:${cloneTarget}";
+    # `path:` prefix is load-bearing: a bare absolute path inside a git
+    # repo is auto-promoted by Nix to `git+file:`, which only sees committed
+    # HEAD (breaking the build-before-commit workflow). `path:` forces
+    # working-tree snapshot semantics on every eval.
+    flake = "path:${dotfilesPath}";
   };
 
   time.timeZone = "America/Los_Angeles";
