@@ -28,26 +28,18 @@
 (defwidget nightlight-widget []
   ; Always visible — all 4 states (nightlight-off/on/paused/disabled).
   ;
-  ; Left-click:   open rofi dmenu with labeled, state-aware actions.
-  ;               This is the primary interaction path — no muscle-memory required.
+  ; Left-click  → toggle-pause  (NIGHT→pause30, PAUSED→resume, DAY/OFF TONIGHT no-op)
+  ; Right-click → toggle on/off (works in every state; the universal escape hatch)
+  ; Tooltip documents the bindings so no muscle memory is required.
   ;
-  ; Right-click:  fast shortcut for the single most likely action:
-  ;   NIGHT    → pause 30m   (on→pause)
-  ;   PAUSED   → extend +30m (paused→extend, same toggle-pause code path)
-  ;   DAY         → no-op    (off state; nothing useful to shortcut)
-  ;   OFF TONIGHT → no-op    (ambiguous intent; use the menu)
-  ;
-  ; No middle-click: the disable action is available via the menu.
-  ; Removing middle-click prevents accidental fires on a 32px target.
-  ; setsid -f detaches the menu into its own session.  eww re-renders the bar
-  ; every 1s (the mode/time polls) and SIGKILLs any :onclick child still alive,
-  ; which orphans rofi and kills the dispatch before the selection runs.
-  ; Detaching puts nightlight-menu.sh outside eww's process tree so it survives.
+  ; Long-tail verbs live on the keyboard: $mod+n toggle, $mod+Shift+p toggle-pause,
+  ; $mod+Shift+e pause 30m, $mod+Shift+d disable. See sway/config.
   (button
     :class {nightlight.class}
     :visible true
-    :onclick "setsid -f ~/.local/bin/nightlight-menu.sh"
-    :onrightclick "~/.local/bin/nightlight.sh toggle-pause"
+    :tooltip "Left: pause/resume · Right: on/off · $mod+n: toggle"
+    :onclick "~/.local/bin/nightlight.sh toggle-pause"
+    :onrightclick "~/.local/bin/nightlight.sh toggle"
     {nightlight.text}))
 
 (defwidget workspace-btn [ws]

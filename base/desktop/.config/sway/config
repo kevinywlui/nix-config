@@ -45,10 +45,13 @@ bindsym $mod+Shift+a exec ~/.local/bin/audio-switch.sh
 bindsym $mod+g exec google-chrome-stable
 bindsym $mod+t exec Telegram
 bindsym $mod+Shift+w exec hyprlock
-# Bedtime mode is driven from the Eww bar widget (left-click menu, right-click
-# toggle-pause).  $mod+n is the keyboard escape hatch — flips bedtime on/off
-# regardless of schedule, and works even if the bar/widget is unavailable.
-bindsym $mod+n exec ~/.local/bin/nightlight.sh toggle
+# Bedtime mode is driven from the Eww bar widget (left-click toggle-pause,
+# right-click toggle on/off).  These keybindings cover the same verbs plus the
+# long-tail ones (pause, disable) so the bar widget is never required.
+bindsym $mod+n       exec ~/.local/bin/nightlight.sh toggle
+bindsym $mod+Shift+p exec ~/.local/bin/nightlight.sh toggle-pause
+bindsym $mod+Shift+e exec ~/.local/bin/nightlight.sh pause 30
+bindsym $mod+Shift+d exec ~/.local/bin/nightlight.sh disable
 
 bindsym $mod+period move workspace to output right
 bindsym $mod+comma move workspace to output left

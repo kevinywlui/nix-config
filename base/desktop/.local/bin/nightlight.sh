@@ -329,7 +329,7 @@ cmd_on() {
 	notify -u low -t 4000 \
 		"Bedtime mode on" \
 		"Warm ${BEDTIME_KELVIN}K
-Left-click bar for menu · Right-click to pause"
+Left-click bar to pause · Right-click to turn off"
 }
 
 cmd_off() {
@@ -368,7 +368,7 @@ cmd_pause() {
 		else
 			notify -u low -t 4000 \
 				"Bedtime paused ${PAUSE_MINUTES} minutes" \
-				"Resuming at ${end_time} · Right-click to extend"
+				"Resuming at ${end_time} · Left-click bar to resume now"
 		fi
 		;;
 	esac
@@ -376,7 +376,7 @@ cmd_pause() {
 
 cmd_disable() {
 	# Skip tonight's bedtime; re-enables at tomorrow's bedtime.
-	# Called by: rofi menu "Skip Tonight" (nightlight-menu.sh), or by hand.
+	# Called by: $mod+Shift+d, or by hand.
 	#
 	# disabled_until targets *tomorrow's* bedtime, not today's: if it were
 	# today's, a skip set before bedtime would be cleared by the

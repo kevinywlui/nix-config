@@ -7,10 +7,10 @@
 #   * the generated schedule config (single source of truth), and
 #   * the symlinks for the engine + menu scripts.
 #
-# The behaviour lives in the Stow-managed scripts under
-# base/desktop/.local/bin/ (nightlight.sh, nightlight-menu.sh) so the exact
-# same logic runs on non-NixOS installs; this file only wires them into
-# systemd and keeps the schedule in lockstep with the timer OnCalendar values.
+# The behaviour lives in the Stow-managed script under
+# base/desktop/.local/bin/nightlight.sh so the exact same logic runs on
+# non-NixOS installs; this file only wires it into systemd and keeps the
+# schedule in lockstep with the timer OnCalendar values.
 { config, pkgs, dotfilesPath, ... }:
 
 let
@@ -39,7 +39,6 @@ in
 {
   home.file = {
     ".local/bin/nightlight.sh".source = link ".local/bin/nightlight.sh";
-    ".local/bin/nightlight-menu.sh".source = link ".local/bin/nightlight-menu.sh";
   };
 
   # Generated bedtime schedule — single source of truth (see let-bindings).

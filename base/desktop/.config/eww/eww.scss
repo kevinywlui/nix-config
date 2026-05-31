@@ -46,7 +46,8 @@ window#clock {
 // ---- Nightlight pill ----
 //
 // All four states are always visible.  Color alone communicates urgency;
-// the label text confirms it.  Left-click opens nightlight-menu.sh (rofi).
+// the label text confirms it.  Click semantics live on the pill's tooltip
+// (see eww.yuck nightlight-widget).
 //
 // Gruvbox palette used throughout:
 //   #cc241d  gruvbox red      — aggressive, "stop everything"

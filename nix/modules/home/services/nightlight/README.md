@@ -24,10 +24,12 @@ nightlight.sh status        # print current state
 nightlight.sh status-eww    # JSON for the bar widget
 ```
 
-Controls: **left-click** the bar pill for the action menu, **right-click** to
-pause/extend, **`$mod+n`** to toggle from the keyboard. The rest of this README
-explains the design that makes the above robust under suspend, docking, and
-session restarts.
+Controls: **left-click** the bar pill to pause/resume, **right-click** to
+toggle on/off, and the keyboard chords `$mod+n` (toggle), `$mod+Shift+p`
+(toggle-pause), `$mod+Shift+e` (pause 30m), `$mod+Shift+d` (skip tonight).
+The pill itself carries a tooltip documenting the click bindings, so no
+muscle memory is required. The rest of this README explains the design that
+makes the above robust under suspend, docking, and session restarts.
 
 ---
 
@@ -66,7 +68,6 @@ runs on non-NixOS installs. This is why the behaviour lives here and not in Nix.
 | File | Role |
 | --- | --- |
 | `nightlight.sh` | The engine. State machine, gamma fades, schedule math, all subcommands. |
-| `nightlight-menu.sh` | rofi `--dmenu` popup for the bar widget; state-aware action list. |
 
 ### Nix glue — `nix/modules/home/services/nightlight/default.nix`
 
@@ -86,10 +87,10 @@ by `systemd-run` for the pause countdown; they are not declared in Nix.
 ### Widget — `base/desktop/.config/eww/{eww.yuck,eww.scss}`
 
 The `nightlight-widget` bar pill. Polls `nightlight.sh status-eww` every 30s and
-renders one of four states. Left-click opens the rofi menu; right-click is a
-fast pause/extend shortcut. The pill lives inside the shared eww config because
-the bar is one config; the `.nightlight-*` classes and the `nightlight` poll are
-the only nightlight-specific parts.
+renders one of four states. Left-click runs `toggle-pause`, right-click runs
+`toggle`; the pill's tooltip documents both. The pill lives inside the shared
+eww config because the bar is one config; the `.nightlight-*` classes and the
+`nightlight` poll are the only nightlight-specific parts.
 
 ### Compositor — `base/desktop/.config/sway/config`
 
@@ -100,7 +101,7 @@ the only nightlight-specific parts.
 
 ### Packages — `nix/modules/nixos/profiles/desktop.nix`
 
-`wl-gammarelay-rs`, `gammastep` (calculator only), and `rofi` (the menu).
+`wl-gammarelay-rs` and `gammastep` (calculator only).
 
 ---
 
@@ -180,11 +181,12 @@ lockstep; edit them in the script.
   unit that a long suspend can outlast; `--reapply` (run by swayidle on wake)
   re-checks `pause_until` against the wall clock and completes the resume if the
   window already elapsed, so a pause can't get stuck on forever.
-- **Detached menu.** The eww bar re-renders every second (the `mode`/`time`
-  polls) and SIGKILLs any `:onclick` child still alive. The menu is launched
-  `setsid -f` so it runs in its own session and survives — otherwise rofi is
-  orphaned and the selection is lost. **Any** blocking/interactive eww onclick
-  needs this treatment.
+- **Non-blocking onclicks.** The eww bar re-renders every second (the
+  `mode`/`time` polls) and SIGKILLs any `:onclick` child still alive. The
+  pill's handlers are simple `nightlight.sh` invocations that return well
+  inside that 1s window. **Any** blocking/interactive eww onclick added in
+  the future must detach with `setsid -f` — otherwise the bar's re-render
+  will kill it mid-flight.
 - **Relay readiness.** `wl-gammarelay-rs` is `Type=dbus` with
   `BusName=rs.wl-gammarelay`, so systemd treats it as started only once it owns
   the bus name. The curve and bedtime services `Wants`/`After` it, so a tick
@@ -217,12 +219,12 @@ lockstep; edit them in the script.
 
 ## Non-NixOS installs
 
-`make install` (GNU Stow) symlinks `nightlight.sh` and `nightlight-menu.sh` into
-`~/.local/bin`. The scripts then run with their built-in defaults (the `let`
-values mirrored at the top of `nightlight.sh`). What you **don't** get without
-Nix: the systemd timers (schedule/curve), the relay service, and the generated
-config. Start `wl-gammarelay-rs` yourself and call the script's subcommands, or
-port the units to your init system.
+`make install` (GNU Stow) symlinks `nightlight.sh` into `~/.local/bin`. The
+script then runs with its built-in defaults (the `let` values mirrored at the
+top of `nightlight.sh`). What you **don't** get without Nix: the systemd timers
+(schedule/curve), the relay service, and the generated config. Start
+`wl-gammarelay-rs` yourself and call the script's subcommands, or port the
+units to your init system.
 
 ---
 
