@@ -10,12 +10,16 @@ include ~/.config/sway/outputs
 
 seat * xcursor_theme Adwaita 32
 
-# Propagate Wayland environment to systemd user units and D-Bus
-exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME=Adwaita XCURSOR_SIZE=32
-exec_always systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XCURSOR_THEME XCURSOR_SIZE
-# Start the gamma relay (after env import so it can reach the compositor),
-# then apply the current dawn/dusk temperature once it is up.
-exec sh -c "systemctl --user start wl-gammarelay-rs.service && systemctl --user start nightlight-curve.service"
+# Propagate Wayland environment to systemd user units and D-Bus, then start
+# the gamma relay (which reads WAYLAND_DISPLAY at ExecStart — racing the env
+# import via separate exec lines costs two restart attempts before success).
+# `systemctl start` is idempotent, so making the whole chain exec_always is
+# safe on reload.
+exec_always sh -c "\
+    dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME=Adwaita XCURSOR_SIZE=32 && \
+    systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XCURSOR_THEME XCURSOR_SIZE && \
+    systemctl --user start wl-gammarelay-rs.service && \
+    systemctl --user start nightlight-curve.service"
 
 exec_always swaybg -c "#282828"
 exec_always sh -c "pkill -f 'eww-output-watcher\\.sh$'; eww kill; ~/.local/bin/eww-output-watcher.sh &"
