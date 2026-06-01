@@ -14,7 +14,7 @@ in
     ".local/bin/eww-audio.sh".source = link ".local/bin/eww-audio.sh";
     ".local/bin/eww-workspaces.sh".source = link ".local/bin/eww-workspaces.sh";
     ".local/bin/eww-battery.sh".source = link ".local/bin/eww-battery.sh";
-    ".local/bin/eww-bars-open.sh".source = link ".local/bin/eww-bars-open.sh";
+    ".local/bin/eww-output-watcher.sh".source = link ".local/bin/eww-output-watcher.sh";
   };
 
   xdg.configFile = {
