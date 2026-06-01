@@ -29,7 +29,7 @@
   boot.loader.systemd-boot.consoleMode = "max";
   boot.loader.systemd-boot.configurationLimit = 10;
   boot.loader.efi.canTouchEfiVariables = true;
-  boot.loader.timeout = 2;
+  boot.loader.timeout = 1;
   boot.kernelParams = [
     "nvme.noacpi=1" # workaround: NVMe ACPI power management conflicts with FW13 Intel Core Ultra, causes boot failures
     "rng_core.default_quality=0" # stop hwrng from polling tpm-rng-0; entropy pool is kept full by RDRAND/RDSEED
