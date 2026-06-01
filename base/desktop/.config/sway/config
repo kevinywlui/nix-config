@@ -18,7 +18,7 @@ exec_always systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESK
 exec sh -c "systemctl --user start wl-gammarelay-rs.service && systemctl --user start nightlight-curve.service"
 
 exec_always swaybg -c "#282828"
-exec_always sh -c "pkill -f 'eww-output-watcher\\.sh$'; eww kill; ~/.local/bin/eww-output-watcher.sh &"
+exec_always ~/.local/bin/eww-bars-open.sh
 exec swayidle -w \
     timeout 570 'notify-send -u critical "Locking screen in 30 seconds"' \
         resume 'dunstctl close-all' \
