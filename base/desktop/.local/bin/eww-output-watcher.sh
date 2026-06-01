@@ -51,6 +51,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Ensure the eww daemon is fully up before the first reconcile — without
+# this wait, the first `eww open` can fire while the daemon is mid-spawn
+# and fail silently, leaving a bar missing until the next output event.
+eww daemon >/dev/null 2>&1 || true
+for _ in $(seq 1 50); do
+	eww ping >/dev/null 2>&1 && break
+	sleep 0.1
+done
+
 while true; do
 	reconcile
 	# Process substitution (not a pipe) keeps `opened` updates in this shell.
