@@ -63,6 +63,15 @@ in
     flake = "path:${dotfilesPath}";
   };
 
+  # Keep the weekly cadence + Persistent=true catch-up, but push the catch-up
+  # tick out of the login critical path and deprioritize its IO so the user
+  # session doesn't share disk with an 80s, multi-GB nix-store --gc.
+  systemd.timers.nh-clean.timerConfig.RandomizedDelaySec = "30min";
+  systemd.services.nh-clean.serviceConfig = {
+    Nice = 19;
+    IOSchedulingClass = "idle";
+  };
+
   time.timeZone = "America/Los_Angeles";
 
   # Enable BBR congestion control with fq qdisc for improved throughput and latency
