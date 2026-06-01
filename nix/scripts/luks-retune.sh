@@ -111,6 +111,28 @@ backup)
 	chmod 600 "$out"
 	echo "saved $(stat -c%s "$out") bytes to $out"
 	if [[ -n "$remote" ]]; then
+		# Split user@host from path. Bash ${remote%%:*} = before first ':',
+		# ${remote#*:} = after first ':'. Anchor mkdir on a trailing '/' to
+		# disambiguate "dest/" (a directory) from "dest/file.img" (parent only).
+		remote_host=${remote%%:*}
+		remote_path=${remote#*:}
+		if [[ "$remote_path" == */ ]]; then
+			target_dir=$remote_path
+		else
+			target_dir=$(dirname "$remote_path")
+		fi
+		echo "preflight: ssh $remote_host mkdir -p $target_dir"
+		# Build the remote command with printf %q so target_dir is safely
+		# escaped for the remote shell. SC2029 is intentional here — we want
+		# client-side expansion so the remote shell sees the literal path.
+		printf -v remote_mkdir 'mkdir -p -- %q' "$target_dir"
+		if [[ -n "${SUDO_USER:-}" ]]; then
+			# shellcheck disable=SC2029
+			runuser -u "$SUDO_USER" -- ssh "$remote_host" "$remote_mkdir"
+		else
+			# shellcheck disable=SC2029
+			ssh "$remote_host" "$remote_mkdir"
+		fi
 		echo "copying to $remote (as ${SUDO_USER:-root}, uses your SSH keys)"
 		if [[ -n "${SUDO_USER:-}" ]]; then
 			runuser -u "$SUDO_USER" -- scp "$out" "$remote"
