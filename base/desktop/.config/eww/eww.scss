@@ -29,6 +29,14 @@ window#clock {
   border-bottom: 3px solid #458588;
 }
 
+// Visible-but-not-focused: the workspace shown on a non-focused output.
+// Underline only, no fill — distinguishes "visible here" from "keyboard
+// focus is here" (.focused) without competing with it visually.
+.workspace.visible {
+  color: #fbf1c7;
+  border-bottom: 3px solid #458588;
+}
+
 .workspace.urgent {
   background-color: #cc241d;
   color: #dddddd;

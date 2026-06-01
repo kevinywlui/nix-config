@@ -44,13 +44,15 @@
 
 (defwidget workspace-btn [ws]
   (button
-    :class {ws.focused ? "workspace focused" : ws.urgent ? "workspace urgent" : "workspace"}
+    :class {ws.urgent ? "workspace urgent" :
+            ws.focused ? "workspace focused" :
+            ws.visible ? "workspace visible" : "workspace"}
     :onclick "swaymsg workspace ${ws.name}"
     {ws.name}))
 
-(defwidget workspaces-widget []
+(defwidget workspaces-widget [monitor]
   (box :class "workspaces" :orientation "h" :space-evenly false
-    (for ws in workspaces
+    (for ws in {jq(workspaces, "map(select(.output == \"${monitor}\"))")}
       (workspace-btn :ws ws))))
 
 (defwidget mode-widget []
@@ -76,9 +78,9 @@
 (defwidget clock-widget []
   (label :class "clock" :text datetime))
 
-(defwidget bar-left []
+(defwidget bar-left [monitor]
   (box :orientation "h" :space-evenly false :halign "start"
-    (workspaces-widget)
+    (workspaces-widget :monitor monitor)
     (mode-widget)))
 
 (defwidget bar-right []
@@ -89,9 +91,9 @@
     (clock-widget)
     (systray :spacing 8)))
 
-(defwidget bar-widget []
+(defwidget bar-widget [monitor]
   (centerbox :orientation "h"
-    (bar-left)
+    (bar-left :monitor monitor)
     (box)
     (bar-right)))
 
@@ -105,16 +107,16 @@
 
 ;;;; Windows
 
-(defwindow bar
-  :monitor 0
+(defwindow bar [monitor]
+  :monitor monitor
   :geometry (geometry :x "0%" :y "0%" :width "100%" :height "32px" :anchor "top center")
   :stacking "fg"
   :exclusive true
   :focusable false
-  (bar-widget))
+  (bar-widget :monitor monitor))
 
-(defwindow clock
-  :monitor 0
+(defwindow clock [monitor]
+  :monitor monitor
   :geometry (geometry :x "0%" :y "0%" :width "100%" :height "100%")
   :stacking "bg"
   :exclusive false
