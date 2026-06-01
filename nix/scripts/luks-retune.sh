@@ -14,13 +14,14 @@
 # Or run each step manually:
 #
 #   sudo nix/scripts/luks-retune.sh backup [<local-path>] [<scp-dest>]
-#                                                  # default local: /tmp/<host>-luks-header-<date>.img
-#                                                  # if scp-dest given: scp + shred local
+#                                                  # default local: /run/<host>-luks-header-<date>.img (tmpfs)
+#                                                  # if scp-dest given: scp + remove local
 #   sudo nix/scripts/luks-retune.sh status         # note current slot numbers
 #   sudo nix/scripts/luks-retune.sh add            # adds new slot, REUSE same passphrase
 #   sudo nix/scripts/luks-retune.sh test <slot>    # time the new slot, ~1s expected
 #   sudo nix/scripts/luks-retune.sh kill <slot>    # remove the slow slot
 #   sudo nix/scripts/luks-retune.sh status         # confirm only new slot remains
+#   sudo nix/scripts/luks-retune.sh restore <path> # roll back to a header backup (rare)
 #
 # Identify slots in `status` output by the `Memory:` field: the old slot has
 # ~1048576 KiB (1 GiB), the new one has 262144 KiB (256 MiB).
@@ -57,11 +58,18 @@ list_slots() {
 
 # Print "memory=NNNNNN KiB (NNN MiB), time-cost=N iters" for the given slot,
 # parsed from luksDump. Used for both the post-add summary and the test verdict.
+#
+# `in_ks` is essential: luksDump's Digests section can also contain `Memory:`
+# and `Time cost:` lines (when argon2id is used for the digest). Without the
+# section gate, those would silently clobber the keyslot's recorded values
+# and make the test verdict lie.
 slot_params() {
 	cryptsetup luksDump "$DEVICE" | awk -v want="$1" '
-		/^[[:space:]]+[0-9]+: luks2$/ { current = $1; sub(/:/, "", current) }
-		current == want && /^[[:space:]]+Memory:/ { mem = $2 }
-		current == want && /^[[:space:]]+Time cost:/ { tc = $3 }
+		/^Keyslots:/ { in_ks = 1; next }
+		/^(Tokens|Digests|Segments):/ { in_ks = 0; next }
+		in_ks && /^[[:space:]]+[0-9]+: luks2$/ { current = $1; sub(/:/, "", current) }
+		in_ks && current == want && /^[[:space:]]+Memory:/ { mem = $2 }
+		in_ks && current == want && /^[[:space:]]+Time cost:/ { tc = $3 }
 		END {
 			if (mem == "") { print "(slot " want " not found)"; exit 1 }
 			printf "memory=%s KiB (%.0f MiB), time-cost=%s iters\n", mem, mem/1024, tc
@@ -71,8 +79,10 @@ slot_params() {
 
 slot_memory_kib() {
 	cryptsetup luksDump "$DEVICE" | awk -v want="$1" '
-		/^[[:space:]]+[0-9]+: luks2$/ { current = $1; sub(/:/, "", current) }
-		current == want && /^[[:space:]]+Memory:/ { print $2; exit }
+		/^Keyslots:/ { in_ks = 1; next }
+		/^(Tokens|Digests|Segments):/ { in_ks = 0; next }
+		in_ks && /^[[:space:]]+[0-9]+: luks2$/ { current = $1; sub(/:/, "", current) }
+		in_ks && current == want && /^[[:space:]]+Memory:/ { print $2; exit }
 	'
 }
 
@@ -97,7 +107,11 @@ case "$cmd" in
 backup)
 	out=${1:-}
 	remote=${2:-}
-	[[ -n "$out" ]] || out=/tmp/$(hostname)-luks-header-$(date +%F).img
+	# Default to /run (tmpfs, RAM-backed, never lands on persistent storage).
+	# /tmp on this host is on the LUKS-encrypted btrfs — `shred` on btrfs CoW
+	# does not actually destroy the data because old extents stay referenced
+	# in free-space until eventual TRIM, leaving the header recoverable.
+	[[ -n "$out" ]] || out=/run/$(hostname)-luks-header-$(date +%F).img
 	[[ ! -e "$out" ]] || {
 		echo "$out exists, refusing to overwrite" >&2
 		exit 1
@@ -116,15 +130,21 @@ backup)
 		# disambiguate "dest/" (a directory) from "dest/file.img" (parent only).
 		remote_host=${remote%%:*}
 		remote_path=${remote#*:}
+		# Reject a host string starting with '-' — ssh/scp would parse it as
+		# a flag (e.g. -oProxyCommand=...), executing arbitrary commands locally.
+		[[ "$remote_host" != -* ]] || {
+			echo "remote host '$remote_host' starts with '-' — refusing" >&2
+			exit 1
+		}
 		if [[ "$remote_path" == */ ]]; then
 			target_dir=$remote_path
 		else
 			target_dir=$(dirname "$remote_path")
 		fi
 		echo "preflight: ssh $remote_host mkdir -p $target_dir"
-		# Build the remote command with printf %q so target_dir is safely
-		# escaped for the remote shell. SC2029 is intentional here — we want
-		# client-side expansion so the remote shell sees the literal path.
+		# printf %q makes target_dir safe for the remote shell. SC2029 is
+		# intentional — we want client-side expansion so the remote shell
+		# sees the literal escaped path.
 		printf -v remote_mkdir 'mkdir -p -- %q' "$target_dir"
 		if [[ -n "${SUDO_USER:-}" ]]; then
 			# shellcheck disable=SC2029
@@ -139,13 +159,15 @@ backup)
 		else
 			scp "$out" "$remote"
 		fi
-		echo "remote copy succeeded; shredding local $out"
-		shred -u "$out"
+		# rm is sufficient here because /run is tmpfs (RAM); the bytes are
+		# gone the instant the inode is unlinked. No shred dance needed.
+		echo "remote copy succeeded; removing local $out"
+		rm -f "$out"
 		echo "rollback source: $remote"
 	else
 		echo
-		echo "WARNING: no scp destination given. This backup is on $DEVICE and"
-		echo "is USELESS if LUKS won't unlock at boot. Either:"
+		echo "WARNING: no scp destination given. The backup is in tmpfs ($out)"
+		echo "and will VANISH on reboot. Copy it off-host before you reboot:"
 		echo "  cp $out /run/media/klui/<USB>/         # USB stick"
 		echo "  scp $out klui@t480:luks-backups/       # off-host"
 		echo "or re-run: sudo $0 backup '' <scp-dest>"
@@ -190,8 +212,11 @@ test)
 	read -rsp "passphrase (input is hidden): " pass
 	echo
 	start_ns=$(date +%s%N)
-	printf '%s' "$pass" | cryptsetup open --test-passphrase --key-slot "$slot" --key-file=- "$DEVICE"
-	rc=$?
+	# `|| rc=$?` is required: under `set -e -o pipefail`, a failing pipeline
+	# would abort the script before `rc=$?` ran, leaving the friendly error
+	# below unreachable. The `||` captures the status without tripping set -e.
+	rc=0
+	printf '%s' "$pass" | cryptsetup open --test-passphrase --key-slot "$slot" --key-file=- "$DEVICE" || rc=$?
 	end_ns=$(date +%s%N)
 	unset pass
 	if [[ "$rc" -ne 0 ]]; then
@@ -199,16 +224,23 @@ test)
 		exit "$rc"
 	fi
 	elapsed_ms=$(((end_ns - start_ns) / 1000000))
+	# Verdict band is 500-2000ms — wide enough to absorb thermal/turbo and
+	# P/E-core scheduling variance on a 155H, tight enough that an actual
+	# misconfiguration (e.g., cryptsetup ignoring --pbkdf-memory) would still
+	# trip the warning. Exit 2 if outside target so `all` can gate on it.
+	exit_rc=0
 	if [[ "$mem" == "$NEW_MEMORY_KIB" ]]; then
-		if ((elapsed_ms >= 700 && elapsed_ms <= 1500)); then
-			verdict="✓ within target (700-1500ms for ~1s KDF)"
+		if ((elapsed_ms >= 500 && elapsed_ms <= 2000)); then
+			verdict="✓ within target (500-2000ms for ~1s KDF)"
 		else
-			verdict="⚠ outside target (700-1500ms for ~1s KDF)"
+			verdict="⚠ outside target (500-2000ms for ~1s KDF)"
+			exit_rc=2
 		fi
 	else
 		verdict="(no target for this memory cost — baseline measurement)"
 	fi
 	echo "slot $slot: unlock=${elapsed_ms}ms $verdict"
+	exit "$exit_rc"
 	;;
 kill)
 	slot=${1:-}
@@ -242,16 +274,36 @@ all)
 	echo "=== 1/5 backup + scp ==="
 	"$0" backup "" "$remote"
 	echo
+	before=$(list_slots)
 	echo "=== 2/5 add new slot ==="
 	"$0" add
-	new_slot=$(list_slots | grep -vx "$old_slot")
-	[[ -n "$new_slot" ]] || {
-		echo "could not detect new slot after add — abort" >&2
+	after=$(list_slots)
+	new_slot=$(comm -13 <(echo "$before") <(echo "$after"))
+	new_count=$(echo "$new_slot" | grep -c '^[0-9]')
+	[[ "$new_count" -eq 1 ]] || {
+		echo "expected exactly 1 new slot, got $new_count: $new_slot" >&2
 		exit 1
 	}
 	echo
 	echo "=== 3/5 time new slot ==="
-	"$0" test "$new_slot"
+	# rc=2 from `test` means the unlock succeeded but the wall time was
+	# outside the verdict band — surface this with an extra confirm so we
+	# don't proceed straight to killing the old slot on a misconfigured retune.
+	test_rc=0
+	"$0" test "$new_slot" || test_rc=$?
+	if [[ "$test_rc" -eq 2 ]]; then
+		echo
+		echo "⚠ unlock time was outside target. type 'YES' to continue to the"
+		echo "KILL gate anyway, anything else to abort (both slots stay alive):"
+		read -r verdict_confirm
+		[[ "$verdict_confirm" == "YES" ]] || {
+			echo "aborted — investigate the verdict before killing the old slot."
+			echo "you can re-test with: sudo $0 test $new_slot"
+			exit 0
+		}
+	elif [[ "$test_rc" -ne 0 ]]; then
+		exit "$test_rc"
+	fi
 	echo
 	echo "=== 4/5 confirm before killing slot $old_slot ==="
 	echo "slot $old_slot (old) and slot $new_slot (new) are both active."
