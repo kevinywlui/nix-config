@@ -3,18 +3,24 @@
 # ~5s to ~1s by reducing memory cost from 1 GiB to 256 MiB. All operations
 # are ONLINE — the root filesystem stays mounted throughout.
 #
-# The new parameters take effect on the next boot. Use the `test` subcommand
-# to verify the new slot's unlock time in the current session without rebooting.
+# Quickest path — run everything as a single command:
 #
-# Run each subcommand IN ORDER:
+#   sudo nix/scripts/luks-retune.sh all klui@t480:luks-backups/
 #
-#   sudo nix/scripts/luks-retune.sh backup <off-disk-path>
-#   sudo nix/scripts/luks-retune.sh status              # note current slot numbers
-#   sudo nix/scripts/luks-retune.sh add                 # adds new slot, REUSE same passphrase
-#   sudo nix/scripts/luks-retune.sh status              # confirm new slot exists
-#   sudo nix/scripts/luks-retune.sh test <new-slot>     # confirm new slot opens, ~1s
-#   sudo nix/scripts/luks-retune.sh kill <old-slot>     # remove the slow slot
-#   sudo nix/scripts/luks-retune.sh status              # confirm only new slot remains
+# This walks through backup → scp → add → test → confirm → kill → final status,
+# prompting for passphrases at each step and pausing for a 'KILL' confirmation
+# before the destructive kill. The destination is your scp target.
+#
+# Or run each step manually:
+#
+#   sudo nix/scripts/luks-retune.sh backup [<local-path>] [<scp-dest>]
+#                                                  # default local: /tmp/<host>-luks-header-<date>.img
+#                                                  # if scp-dest given: scp + shred local
+#   sudo nix/scripts/luks-retune.sh status         # note current slot numbers
+#   sudo nix/scripts/luks-retune.sh add            # adds new slot, REUSE same passphrase
+#   sudo nix/scripts/luks-retune.sh test <slot>    # time the new slot, ~1s expected
+#   sudo nix/scripts/luks-retune.sh kill <slot>    # remove the slow slot
+#   sudo nix/scripts/luks-retune.sh status         # confirm only new slot remains
 #
 # Identify slots in `status` output by the `Memory:` field: the old slot has
 # ~1048576 KiB (1 GiB), the new one has 262144 KiB (256 MiB).
@@ -27,7 +33,7 @@
 #     --header-backup-file <path-to-your-backup>.img
 #
 # This atomically restores the original keyslot exactly as it was before the
-# retune. The backup file is what step 1 above created.
+# retune. The backup file is what `backup` created and scp'd off-disk.
 #
 # Why is this not a Nix change? Argon2id parameters live in the LUKS header
 # (on-disk metadata), not in disko.nix. Nix only knows "this device is LUKS";
@@ -90,18 +96,38 @@ fi
 case "$cmd" in
 backup)
 	out=${1:-}
-	[[ -n "$out" ]] || {
-		echo "usage: $0 backup <off-disk-path>" >&2
-		exit 1
-	}
+	remote=${2:-}
+	[[ -n "$out" ]] || out=/tmp/$(hostname)-luks-header-$(date +%F).img
 	[[ ! -e "$out" ]] || {
 		echo "$out exists, refusing to overwrite" >&2
 		exit 1
 	}
 	cryptsetup luksHeaderBackup "$DEVICE" --header-backup-file "$out"
+	# Pass ownership back to the invoking user so scp (which we run as that
+	# user, not root) can read the file with their SSH keys/agent.
+	if [[ -n "${SUDO_USER:-}" ]]; then
+		chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$out"
+	fi
 	chmod 600 "$out"
 	echo "saved $(stat -c%s "$out") bytes to $out"
-	echo "KEEP THIS BACKUP OFF THIS DISK — it is the only rollback path"
+	if [[ -n "$remote" ]]; then
+		echo "copying to $remote (as ${SUDO_USER:-root}, uses your SSH keys)"
+		if [[ -n "${SUDO_USER:-}" ]]; then
+			runuser -u "$SUDO_USER" -- scp "$out" "$remote"
+		else
+			scp "$out" "$remote"
+		fi
+		echo "remote copy succeeded; shredding local $out"
+		shred -u "$out"
+		echo "rollback source: $remote"
+	else
+		echo
+		echo "WARNING: no scp destination given. This backup is on $DEVICE and"
+		echo "is USELESS if LUKS won't unlock at boot. Either:"
+		echo "  cp $out /run/media/klui/<USB>/         # USB stick"
+		echo "  scp $out klui@t480:luks-backups/       # off-host"
+		echo "or re-run: sudo $0 backup '' <scp-dest>"
+	fi
 	;;
 status)
 	cryptsetup luksDump "$DEVICE"
@@ -175,6 +201,53 @@ kill)
 	}
 	echo "killing slot $slot — type any remaining passphrase to authorize"
 	cryptsetup luksKillSlot "$DEVICE" "$slot"
+	;;
+all)
+	remote=${1:-}
+	[[ -n "$remote" ]] || {
+		echo "usage: $0 all <scp-dest>" >&2
+		echo "  e.g. $0 all klui@t480:luks-backups/" >&2
+		exit 1
+	}
+	n=$(count_slots)
+	[[ "$n" -eq 1 ]] || {
+		echo "error: expected exactly 1 keyslot, found $n" >&2
+		echo "'all' is for the initial single-slot retune; use individual" >&2
+		echo "subcommands if you're partway through or have a custom state." >&2
+		exit 1
+	}
+	old_slot=$(list_slots | head -n 1)
+	echo "=== 1/5 backup + scp ==="
+	"$0" backup "" "$remote"
+	echo
+	echo "=== 2/5 add new slot ==="
+	"$0" add
+	new_slot=$(list_slots | grep -vx "$old_slot")
+	[[ -n "$new_slot" ]] || {
+		echo "could not detect new slot after add — abort" >&2
+		exit 1
+	}
+	echo
+	echo "=== 3/5 time new slot ==="
+	"$0" test "$new_slot"
+	echo
+	echo "=== 4/5 confirm before killing slot $old_slot ==="
+	echo "slot $old_slot (old) and slot $new_slot (new) are both active."
+	echo "type 'KILL' to remove slot $old_slot, anything else to abort:"
+	read -r confirm
+	[[ "$confirm" == "KILL" ]] || {
+		echo "aborted — both slots remain active. revisit later with:"
+		echo "  sudo $0 kill $old_slot"
+		exit 0
+	}
+	echo
+	echo "=== 5/5 kill old slot ==="
+	"$0" kill "$old_slot"
+	echo
+	echo "=== final status ==="
+	"$0" status
+	echo
+	echo "done. unlock will be ~1s on next boot."
 	;;
 restore)
 	in=${1:-}
