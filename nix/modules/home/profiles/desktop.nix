@@ -40,10 +40,9 @@ in
   # Polkit authentication agent — the GUI "authenticate to continue" prompt.
   # Without a registered agent, polkit actions needing auth_self/auth_admin
   # (fprintd-enroll, udisks mounts, NetworkManager edits) fail with
-  # PermissionDenied. The module's WantedBy=graphical-session.target is inert
-  # here (the target is never activated — see ../services/nightlight); the unit
-  # is started by name from sway's exec chain (base/desktop/.config/sway/config),
-  # matching wl-gammarelay-rs et al.
+  # PermissionDenied. The module's WantedBy=graphical-session.target starts it:
+  # uwsm activates that target (see nix/modules/nixos/profiles/desktop.nix), so
+  # no explicit start line is needed — same as wl-gammarelay-rs and kanshi.
   services.hyprpolkitagent.enable = true;
 
   systemd.user.services.kanshi = {
@@ -69,9 +68,11 @@ in
       Wants = [ "psd.service" ];
     };
     Service = {
-      Type = "oneshot";
+      # Type=simple (not oneshot) with the process in the foreground (no `&`)
+      # so systemd tracks the warmed Chrome rather than orphaning it.
+      Type = "simple";
       ExecStart = pkgs.writeShellScript "chrome-prewarm" ''
-        ${pkgs.google-chrome}/bin/google-chrome-stable --no-startup-window &
+        ${pkgs.google-chrome}/bin/google-chrome-stable --no-startup-window
       '';
     };
     Install = {
@@ -86,9 +87,11 @@ in
       Wants = [ "graphical-session.target" ];
     };
     Service = {
-      Type = "oneshot";
+      # Type=simple (not oneshot) with the process in the foreground (no `&`)
+      # so systemd tracks the Steam tray rather than orphaning it.
+      Type = "simple";
       ExecStart = pkgs.writeShellScript "steam-silent" ''
-        ${pkgs.steam}/bin/steam -silent &
+        ${pkgs.steam}/bin/steam -silent
       '';
     };
     Install = {

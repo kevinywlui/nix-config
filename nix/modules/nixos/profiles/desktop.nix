@@ -6,6 +6,15 @@
     wrapperFeatures.gtk = true;
   };
 
+  programs.uwsm = {
+    enable = true;
+    waylandCompositors.sway = {
+      prettyName = "Sway";
+      comment = "Sway compositor managed by UWSM";
+      binPath = "/run/current-system/sw/bin/sway";
+    };
+  };
+
   xdg.portal = {
     enable = true;
     extraPortals = with pkgs; [
@@ -100,17 +109,25 @@
     enable = true;
     settings = {
       default_session = {
-        command = "${pkgs.tuigreet}/bin/tuigreet --time --cmd sway";
+        command = "uwsm start -F -- /run/current-system/sw/bin/sway";
         user = "greeter";
       };
       initial_session = {
-        command = "sway";
+        command = "uwsm start -F -- /run/current-system/sw/bin/sway";
         user = "klui";
       };
     };
   };
 
   security.pam.services.greetd.fprintAuth = true;
+
+  # uwsm launches the compositor as a systemd unit that does not inherit
+  # home-manager's hm-session-vars.sh, so cursor env must be system-wide here
+  # for `uwsm finalize XCURSOR_*` (sway config) to export real values.
+  environment.sessionVariables = {
+    XCURSOR_THEME = "Adwaita";
+    XCURSOR_SIZE = "32";
+  };
 
   environment.systemPackages =
     let
