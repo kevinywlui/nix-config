@@ -54,22 +54,6 @@ The workflow utilizes `nh` for optimized Nix operations and `make` for user-leve
 ### Secrets Management
 Workflow, key policy, and supply-chain rules live in `AGENTS.md`.
 
-### Maintenance Scripts
-
-| Task | Script |
-| :--- | :--- |
-| **Retune LUKS Argon2id** | `nix/scripts/luks-retune.sh help` — trades KDF memory hardness for faster boot unlock. Header backup + rollback included. |
-
-If a LUKS retune ever leaves a host unable to unlock at boot, boot from a NixOS
-live USB and restore the header backup created in step 1 of the procedure:
-
-```bash
-sudo cryptsetup luksHeaderRestore /dev/disk/by-partlabel/disk-main-luks \
-  --header-backup-file <path-to-your-backup>.img
-```
-
-The full rollback rationale lives in the script's header comment.
-
 ---
 
 ## Development Standards
