@@ -86,8 +86,8 @@ by `systemd-run` for the pause countdown; they are not declared in Nix.
 
 ### Widget — `base/desktop/.config/eww/{eww.yuck,eww.scss}`
 
-The `nightlight-widget` bar pill. Polls `nightlight.sh status-eww` every 30s and
-renders one of four states. Left-click runs `toggle-pause`, right-click runs
+The `nightlight-widget` bar pill. Polls `nightlight.sh status-eww` every 1s and
+renders one of four states (the fast tick keeps the `PAUSED 28m` countdown live). Left-click runs `toggle-pause`, right-click runs
 `toggle`; the pill's tooltip documents both. The pill lives inside the shared
 eww config because the bar is one config; the `.nightlight-*` classes and the
 `nightlight` poll are the only nightlight-specific parts.
@@ -181,12 +181,14 @@ lockstep; edit them in the script.
   unit that a long suspend can outlast; `--reapply` (run by swayidle on wake)
   re-checks `pause_until` against the wall clock and completes the resume if the
   window already elapsed, so a pause can't get stuck on forever.
-- **Non-blocking onclicks.** The eww bar re-renders every second (the
-  `mode`/`time` polls) and SIGKILLs any `:onclick` child still alive. The
-  pill's handlers are simple `nightlight.sh` invocations that return well
-  inside that 1s window. **Any** blocking/interactive eww onclick added in
-  the future must detach with `setsid -f` — otherwise the bar's re-render
-  will kill it mid-flight.
+- **Detached onclicks.** The eww bar re-renders every second (the `mode`/`time`
+  polls) and SIGKILLs any `:onclick` child still alive. The pill's handlers run
+  `nightlight.sh` under `setsid -f` so they survive that kill: `toggle`/off does
+  a `write_state` followed by a `systemctl restart nightlight-curve.timer`, and a
+  busy user bus can push that restart past the 1s window — a mid-flight kill
+  between the two would leave `state=off` with the curve timer dead (screen stuck
+  red, pill says DAY, and the poll can't repair an `off` state). Detaching closes
+  that window. **Any** eww onclick added in the future must likewise `setsid -f`.
 - **Relay readiness.** `wl-gammarelay-rs` is `Type=dbus` with
   `BusName=rs.wl-gammarelay`, so systemd treats it as started only once it owns
   the bus name. The curve and bedtime services `Wants`/`After` it, so a tick

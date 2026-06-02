@@ -293,7 +293,7 @@ maybe_clear_disabled() {
 
 # Catch-up if the transient resume timer never fired (PATH bug, manual stop,
 # any future failure).  Mirrors the paused branch of cmd_reapply but runs from
-# the 30s eww poll, so the bar can't get wedged at "PAUSED 0m" even when the
+# the 1s eww poll, so the bar can't get wedged at "PAUSED 0m" even when the
 # laptop never suspends (cmd_reapply is only triggered by swayidle after-resume).
 # Cheap on purpose — single busctl call, no fade, no notify — so a poll caller
 # never blocks.  The curve timer's next tick is guarded by state=="on" in

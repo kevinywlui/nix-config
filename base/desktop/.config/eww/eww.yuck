@@ -38,8 +38,13 @@
     :class {nightlight.class}
     :visible true
     :tooltip "Left: pause/resume · Right: on/off · $mod+n: toggle"
-    :onclick "~/.local/bin/nightlight.sh toggle-pause"
-    :onrightclick "~/.local/bin/nightlight.sh toggle"
+    ; setsid -f detaches the handler: the bar re-renders (and SIGKILLs live
+    ; onclick children) every second, and `toggle`/off does a write_state then a
+    ; `systemctl restart nightlight-curve.timer` that can outlast 1s on a busy
+    ; user bus — a mid-flight kill would leave state=off but the curve timer dead
+    ; (screen stuck red, pill says DAY). Detaching makes the handler immune.
+    :onclick "setsid -f ~/.local/bin/nightlight.sh toggle-pause"
+    :onrightclick "setsid -f ~/.local/bin/nightlight.sh toggle"
     {nightlight.text}))
 
 (defwidget workspace-btn [ws]
