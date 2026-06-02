@@ -2,3 +2,6 @@
 *.qcow2
 result
 result-*
+
+# Claude Code workflow scratch worktrees (isolation: 'worktree')
+.claude/worktrees/
