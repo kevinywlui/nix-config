@@ -30,10 +30,10 @@ let
 
   # Shared environment for the scheduled/oneshot services: they run outside the
   # interactive shell, so they need PATH to find busctl/gammastep/notify-send
-  # and the nightlight script. WAYLAND_DISPLAY is imported into the user manager
-  # at session start (see sway/config); the D-Bus calls reach the session bus
-  # via the default $XDG_RUNTIME_DIR/bus socket, so no DBUS_SESSION_BUS_ADDRESS
-  # is needed.
+  # and the nightlight script. WAYLAND_DISPLAY is exported into the user manager
+  # at session start by `uwsm finalize` (see base/desktop/.config/sway/config);
+  # the D-Bus calls reach the session bus via the default $XDG_RUNTIME_DIR/bus
+  # socket, so no DBUS_SESSION_BUS_ADDRESS is needed.
   serviceEnv = [ "PATH=/run/current-system/sw/bin:%h/.local/bin" ];
 in
 {
@@ -61,13 +61,14 @@ in
   # restarting a daemon (which races on the exclusive lease and fails silently
   # on NixOS where the binary is wrapped).
 
-  # NOTE: graphical-session.target is never activated in this setup — sway is
-  # launched bare (greetd), not via systemd session integration — so the
-  # After/PartOf/WantedBy=graphical-session.target lines below are INERT. These
-  # units actually start from sway's `exec` (base/desktop/.config/sway/config)
-  # and the bedtime units run via timers.target. The target wiring is kept for
-  # consistency with the rest of desktop.nix (kanshi etc.) and in case sway
-  # gains systemd session binding later.
+  # Since the uwsm migration (sway runs as wayland-wm@sway.service),
+  # graphical-session.target IS activated, and uwsm's wayland-session-waitenv
+  # gate holds that target until WAYLAND_DISPLAY/SWAYSOCK are exported by
+  # `uwsm finalize`. So the After/PartOf/WantedBy=graphical-session.target wiring
+  # below is LIVE — it is what guarantees the relay (and the session-scoped curve
+  # timer) start only once the Wayland env exists. The bedtime on/off timers
+  # deliberately stay on timers.target with Persistent=true, so a missed 9pm/7am
+  # fire catches up across suspend/login rather than being bound to the session.
   systemd.user.services.wl-gammarelay-rs = {
     Unit = {
       Description = "wl-gammarelay-rs D-Bus gamma relay";
@@ -111,7 +112,11 @@ in
       # (every busctl call is `|| true`), so a relay failure must not fail this
       # unit or couple it to relay restarts.
       Wants = [ "wl-gammarelay-rs.service" ];
-      After = [ "wl-gammarelay-rs.service" ];
+      # Order after the session env too: the timer's 0s tick would otherwise pull
+      # the relay up before `uwsm finalize` exports WAYLAND_DISPLAY (see the timer
+      # comment below). PartOf scopes this oneshot to the session.
+      After = [ "graphical-session.target" "wl-gammarelay-rs.service" ];
+      PartOf = [ "graphical-session.target" ];
       # The script stops/restarts this oneshot on every bedtime on/off; disable
       # the start-rate limiter so that churn can never wedge the curve as failed.
       StartLimitIntervalSec = 0;
@@ -126,6 +131,17 @@ in
   systemd.user.timers.nightlight-curve = {
     Unit = {
       Description = "Periodic dawn/dusk curve updates for wl-gammarelay-rs";
+      # Anchor to the session, not timers.target. timers.target is reached at
+      # early boot — ~3s before `uwsm finalize` exports WAYLAND_DISPLAY/SWAYSOCK —
+      # so firing OnActiveSec=0s there pulls wl-gammarelay-rs up before the env
+      # exists, and the relay fails its WAYLAND_DISPLAY check twice before
+      # Restart= self-heals (and the first curve push lands on a dead relay and is
+      # lost). graphical-session.target is held by uwsm's waitenv gate until the
+      # env is live, so binding the timer there makes the 0s tick fire at
+      # session-ready: the relay starts cleanly first try and the curve applies at
+      # once instead of up to 3min later.
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
     };
     Timer = {
       OnActiveSec = "0s";
@@ -133,7 +149,7 @@ in
       AccuracySec = "30s";
     };
     Install = {
-      WantedBy = [ "timers.target" ];
+      WantedBy = [ "graphical-session.target" ];
     };
   };
 
