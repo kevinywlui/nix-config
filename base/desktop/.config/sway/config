@@ -19,7 +19,8 @@ exec_always sh -c "\
     dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway XCURSOR_THEME=Adwaita XCURSOR_SIZE=32 && \
     systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XCURSOR_THEME XCURSOR_SIZE && \
     systemctl --user start wl-gammarelay-rs.service && \
-    systemctl --user start nightlight-curve.service"
+    systemctl --user start nightlight-curve.service && \
+    systemctl --user start hyprpolkitagent.service"
 
 exec_always swaybg -c "#282828"
 exec_always sh -c "pkill -f 'eww-output-watcher\\.sh$'; eww kill; ~/.local/bin/eww-output-watcher.sh &"

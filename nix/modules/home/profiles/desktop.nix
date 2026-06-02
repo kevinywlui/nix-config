@@ -37,6 +37,15 @@ in
     };
   };
 
+  # Polkit authentication agent — the GUI "authenticate to continue" prompt.
+  # Without a registered agent, polkit actions needing auth_self/auth_admin
+  # (fprintd-enroll, udisks mounts, NetworkManager edits) fail with
+  # PermissionDenied. The module's WantedBy=graphical-session.target is inert
+  # here (the target is never activated — see ../services/nightlight); the unit
+  # is started by name from sway's exec chain (base/desktop/.config/sway/config),
+  # matching wl-gammarelay-rs et al.
+  services.hyprpolkitagent.enable = true;
+
   systemd.user.services.kanshi = {
     Unit = {
       Description = "Kanshi dynamic display configuration";
