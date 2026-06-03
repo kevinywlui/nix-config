@@ -61,8 +61,37 @@ fi
 	exit 1
 }
 
-chosen=$(printf '%s\n' "${labels[@]}" | rofi -dmenu -p "Audio" -i -no-custom)
+# Mark the active profile with ● (others padded so the column lines up), so the
+# picker doubles as a "which output is live" readout.
+cur_sink=$(pactl get-default-sink 2>/dev/null || true)
+display=()
+for l in "${labels[@]}"; do
+	if [ "${sink_of[$l]}" = "$cur_sink" ]; then
+		display+=("● $l")
+	else
+		display+=("  $l")
+	fi
+done
+
+# Render as a small popup anchored top-right just under the bar widget, instead of
+# rofi's default centered modal. -theme-str overrides the global config.rasi for
+# this one invocation; -l sizes the list to the device count (no dead rows); the
+# hidden inputbar makes it a pure picker. Under sway/wayland rofi opens on the
+# focused output, so this lands on whichever monitor you're using.
+#
+# me-select-entry/me-accept-entry override rofi's default (single-click selects,
+# double-click accepts) so a single left-click accepts the hovered row directly —
+# mouse-only, no keyboard confirm. Scoped here, so $mod+d drun keeps its default.
+theme='window {location: north east; anchor: north east; x-offset: -4px; y-offset: 36px; width: 18em;}
+       mainbox {children: [listview];}'
+chosen=$(printf '%s\n' "${display[@]}" |
+	rofi -dmenu -i -no-custom -l "${#labels[@]}" -theme-str "$theme" \
+		-me-select-entry "" -me-accept-entry "MousePrimary")
 [ -z "$chosen" ] && exit 0
+
+# Strip the ● / padding marker back off to recover the map key.
+chosen="${chosen#● }"
+chosen="${chosen#  }"
 
 new_sink="${sink_of[$chosen]}"
 new_src="${source_of[$chosen]:-}"
