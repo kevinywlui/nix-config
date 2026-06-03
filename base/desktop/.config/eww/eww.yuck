@@ -66,7 +66,7 @@
 
 (defwidget audio-widget []
   (eventbox
-    :onclick       "~/.local/bin/audio-switch.sh"
+    :onclick       "setsid -f ~/.local/bin/audio-switch.sh"
     :onrightclick  "pactl set-sink-mute @DEFAULT_SINK@ toggle"
     :onmiddleclick "pactl set-source-mute @DEFAULT_SOURCE@ toggle"
     :onscroll      "if [[ '{}' == 'up' ]]; then pamixer --increase 5; else pamixer --decrease 5; fi"

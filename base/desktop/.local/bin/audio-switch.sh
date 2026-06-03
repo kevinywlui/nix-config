@@ -74,4 +74,4 @@ pactl set-default-sink "$new_sink"
 pactl list sink-inputs short | awk '{print $1}' | xargs -r -I{} pactl move-sink-input {} "$new_sink"
 
 notify-send "Audio" "→ $chosen" -t 2000
-pkill -RTMIN+1 waybar
+eww update audio="$(~/.local/bin/eww-audio.sh)" 2>/dev/null || true
