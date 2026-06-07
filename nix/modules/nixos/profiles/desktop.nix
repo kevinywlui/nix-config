@@ -164,6 +164,7 @@
 
       guiUtils = with pkgs; [
         calibre
+        claude-desktop # unofficial Tier 3 input; see flake.nix + AGENTS.md
         kitty
         obsidian
         adwaita-icon-theme

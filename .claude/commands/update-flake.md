@@ -8,7 +8,7 @@ Parse `flake.lock` (at repo root) and record for every Tier 2 and Tier 3 input:
 
 Trust tiers:
 - **Tier 2:** `nixpkgs-unstable`, `home-manager`, `disko`, `sops-nix`, `nixos-hardware`
-- **Tier 3:** any input whose GitHub org is not `NixOS` or `nix-community` (currently none)
+- **Tier 3:** any input whose GitHub org is not `NixOS` or `nix-community` (currently: `claude-desktop` from `aaddrick/claude-desktop-debian`, pinned to an explicit rev in `flake.nix`)
 
 ## Step 2 — Run the update
 
@@ -27,6 +27,7 @@ nix flake update <input-name>
 Run `git diff flake.lock`. For each Tier 2/3 input whose `rev` changed:
 
 - **Tier 3 inputs:** skip pre-screening — always add to the review queue. Every change to a low-visibility repo warrants a full LLM review.
+  - **Rev-pinned Tier 3 inputs** (e.g. `claude-desktop`, pinned to an explicit SHA in `flake.nix`) do **not** move on `nix flake update`, so they produce no `flake.lock` diff. Detect a bump from `git diff flake.nix` instead — old rev = the pre-edit SHA, new rev = the post-edit SHA — and always queue it. Never assume an unchanged lock means an unchanged Tier 3 input.
 - **Tier 2 inputs:** run the pre-screening script (exit 0 = SKIP, exit 1 = REVIEW):
   ```
   nix/scripts/flake-prescreen.sh <owner>/<repo> <old-rev> <new-rev>

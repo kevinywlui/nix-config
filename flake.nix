@@ -11,6 +11,18 @@
 
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs-unstable";
+
+    # Tier 3 (unofficial, low trust): repackages Anthropic's official Windows
+    # Claude Desktop installer to run on Linux. PINNED to an explicit commit so
+    # `nix flake update` cannot auto-bump it — every rev change is a deliberate
+    # edit that MUST be preceded by a manual diff review of the build scripts,
+    # asar/JS patching, native-binding shim, and the hash-pinned installer
+    # URL+hash (the pinned .exe hash protects only the bytes, not the patch
+    # code that runs inside the app holding your Claude auth). See AGENTS.md
+    # "Input Trust Tiers". CHANGE-ME to bump, then re-review at the new rev.
+    # Pinned rev = tag v2.0.18+claude1.11187.4 (2026-06-06).
+    claude-desktop.url = "github:aaddrick/claude-desktop-debian/d99cdbd0e054fc04eb2ccfaf31777f11e89416c3";
+    claude-desktop.inputs.nixpkgs.follows = "nixpkgs-unstable";
   };
 
   outputs = { self, nixpkgs, nixos-hardware, disko, home-manager, ... }@inputs:
