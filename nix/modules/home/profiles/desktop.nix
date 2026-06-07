@@ -61,6 +61,69 @@ in
     };
   };
 
+  # ---------------------------------------------------------------------------
+  # eww — status bar + background clock (see base/desktop/.config/eww/)
+  # ---------------------------------------------------------------------------
+  #
+  # Split into two bound units so a daemon segfault self-heals. eww 0.6.0
+  # SIGSEGVs periodically (an upstream crash, not a config fault). Before this
+  # split, the daemon died and the output-watcher — which only re-opens windows
+  # on a sway `output` event — never noticed, so the bar stayed gone until the
+  # next monitor hotplug or sway reload. Now:
+  #
+  #   eww-daemon : runs `eww daemon` in the foreground under systemd. A crash
+  #                trips Restart=on-failure; Upholds= then re-pulls the watcher.
+  #   eww-bars   : the output-watcher. BindsTo + After the daemon, so it is torn
+  #                down with a crashing daemon; the daemon's Upholds= restarts it
+  #                against the fresh daemon, where it re-opens bar + clock.
+  #
+  # Neither sets Environment: both inherit the user-manager env, where
+  # `uwsm finalize` has exported SWAYSOCK + WAYLAND_DISPLAY and the nix profiles
+  # are on PATH — which the daemon's deflisten/defpoll children (swaymsg, jq,
+  # pamixer, …) need. graphical-session.target is held by uwsm's waitenv gate
+  # until that env exists, so ordering After= it is the readiness gate. This is
+  # the same pure-systemd pattern as kanshi / wl-gammarelay-rs above; the sway
+  # `exec_always` launch line was retired (see base/desktop/.config/sway/config).
+  systemd.user.services.eww-daemon = {
+    Unit = {
+      Description = "eww daemon (status bar + background clock)";
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+      # Keep the window-placement watcher alive whenever the daemon is up: after
+      # a crash-respawn the bar/clock windows are gone until the watcher re-runs,
+      # and Upholds= restarts an inactive-or-failed eww-bars with no delay.
+      Upholds = [ "eww-bars.service" ];
+    };
+    Service = {
+      # --no-daemonize keeps the daemon in the foreground so systemd tracks it as
+      # the main process and Restart=on-failure can catch the segfault.
+      ExecStart = "${pkgs.eww}/bin/eww daemon --no-daemonize";
+      Restart = "on-failure";
+      RestartSec = "1s";
+    };
+    Install = {
+      WantedBy = [ "graphical-session.target" ];
+    };
+  };
+
+  systemd.user.services.eww-bars = {
+    Unit = {
+      Description = "eww bar/clock window-placement watcher";
+      # BindsTo (not just Requires) + After: the watcher must die with a daemon
+      # that exits *unexpectedly*, so a fresh daemon comes up with no orphaned
+      # watcher; the daemon's Upholds= then brings it back once active again.
+      # No Install/WantedBy: eww-bars is pulled solely by the daemon's Upholds=,
+      # which governs both first start and post-crash restart identically.
+      BindsTo = [ "eww-daemon.service" ];
+      After = [ "eww-daemon.service" ];
+    };
+    Service = {
+      # The script's own `eww daemon` + ping-wait is a no-op here (the daemon
+      # service already owns it) but keeps it working under bare Stow.
+      ExecStart = "%h/.local/bin/eww-output-watcher.sh";
+    };
+  };
+
   systemd.user.services.chrome-prewarm = {
     Unit = {
       Description = "Chrome prewarm (background, no window)";

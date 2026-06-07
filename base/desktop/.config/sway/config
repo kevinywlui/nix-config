@@ -19,7 +19,11 @@ seat * xcursor_theme Adwaita 32
 exec_always uwsm finalize XCURSOR_THEME XCURSOR_SIZE
 
 exec_always swaybg -c "#282828"
-exec_always sh -c "pkill -f 'eww-output-watcher\\.sh$'; eww kill; ~/.local/bin/eww-output-watcher.sh &"
+# eww (status bar + clock) is started by systemd user services on NixOS — the
+# eww-daemon + eww-bars units in nix/modules/home/profiles/desktop.nix, which
+# auto-restart the daemon if it segfaults. On a bare Stow / non-NixOS install
+# without those units, autostart it from sway instead by uncommenting:
+#   exec_always sh -c "pkill -f 'eww-output-watcher\\.sh$'; eww kill; ~/.local/bin/eww-output-watcher.sh &"
 exec swayidle -w \
     timeout 570 'notify-send -u critical "Locking screen in 30 seconds"' \
         resume 'dunstctl close-all' \
