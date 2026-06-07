@@ -148,7 +148,12 @@ in
     openDefaultPorts = false;
   };
   networking.firewall.interfaces.tailscale0 = {
-    allowedTCPPorts = [ 22000 ];
+    # 22 = SSH, scoped to the tailnet only (mirrors the key-only openssh config
+    # below) so it is not exposed on the LAN/Wi-Fi the laptops roam onto; auth is
+    # already key-only, so this closes scan/CVE surface, not a break. Recovery if
+    # tailscale is down: physical console (both hosts have a screen).
+    # 22000/21027 = syncthing.
+    allowedTCPPorts = [ 22 22000 ];
     allowedUDPPorts = [ 22000 21027 ];
   };
   systemd.services.syncthing.serviceConfig.UMask = "0007";
@@ -169,14 +174,15 @@ in
 
   services.openssh = {
     enable = true;
+    # Don't let openssh punch port 22 into the firewall on all interfaces
+    # (its default); SSH is scoped to tailscale0 in the firewall block above.
+    openFirewall = false;
     settings = {
       PasswordAuthentication = false;
       KbdInteractiveAuthentication = false;
       PermitRootLogin = "no";
     };
   };
-
-  networking.firewall.allowedTCPPorts = [ 22 ];
 
   zramSwap.enable = true;
 }
