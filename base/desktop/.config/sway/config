@@ -1,6 +1,6 @@
 set $mod Mod4
 
-# CapsLock → Super (Mod4), matching .xmodmap behaviour
+# CapsLock acts as a second Super (Mod4) key
 input type:keyboard {
     xkb_options caps:super
 }
@@ -14,8 +14,7 @@ seat * xcursor_theme Adwaita 32
 # env (WAYLAND_DISPLAY, SWAYSOCK, ...) plus the two named extras into systemd +
 # D-Bus, then activates graphical-session.target. That pulls the WantedBy= user
 # units (wl-gammarelay-rs, nightlight-curve, hyprpolkitagent, kanshi) in order,
-# making the relay's WAYLAND_DISPLAY ordering correct declaratively — replacing
-# the old hand-rolled import + `systemctl --user start` chain.
+# making the relay's WAYLAND_DISPLAY ordering correct declaratively.
 exec_always uwsm finalize XCURSOR_THEME XCURSOR_SIZE
 
 exec_always swaybg -c "#282828"

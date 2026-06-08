@@ -61,12 +61,12 @@ in
   # restarting a daemon (which races on the exclusive lease and fails silently
   # on NixOS where the binary is wrapped).
 
-  # Since the uwsm migration (sway runs as wayland-wm@sway.service),
-  # graphical-session.target IS activated, and uwsm's wayland-session-waitenv
-  # gate holds that target until WAYLAND_DISPLAY/SWAYSOCK are exported by
-  # `uwsm finalize`. So the After/PartOf/WantedBy=graphical-session.target wiring
-  # below is LIVE — it is what guarantees the relay (and the session-scoped curve
-  # timer) start only once the Wayland env exists. The bedtime on/off timers
+  # sway runs under uwsm as wayland-wm@sway.service, so graphical-session.target
+  # is activated, and uwsm's wayland-session-waitenv gate holds that target until
+  # WAYLAND_DISPLAY/SWAYSOCK are exported by `uwsm finalize`. So the
+  # After/PartOf/WantedBy=graphical-session.target wiring below is LIVE — it is
+  # what guarantees the relay (and the session-scoped curve timer) start only
+  # once the Wayland env exists. The bedtime on/off timers
   # deliberately stay on timers.target with Persistent=true, so a missed 9pm/7am
   # fire catches up across suspend/login rather than being bound to the session.
   systemd.user.services.wl-gammarelay-rs = {

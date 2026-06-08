@@ -216,10 +216,10 @@ start_pause_timers() {
 	((warn_delay < 1)) && warn_delay=1
 
 	# Transient `systemd-run --user` units start with an empty PATH (unlike the
-	# Nix-declared units in default.nix, which set Environment=PATH=…).  An empty
-	# PATH meant notify-send/bash/nightlight.sh's `#!/usr/bin/env bash` couldn't
-	# resolve, so the resume unit silently died with exit 127 and pause never
-	# auto-resumed (the bar wedged at "PAUSED 0m").  Mirror serviceEnv verbatim.
+	# Nix-declared units in default.nix, which set Environment=PATH=…).  Without a
+	# PATH, notify-send/bash/nightlight.sh's `#!/usr/bin/env bash` can't resolve,
+	# so the resume unit dies with exit 127 and the pause never auto-resumes (the
+	# bar wedges at "PAUSED 0m").  Mirror serviceEnv verbatim.
 	# `%h` is a unit-file specifier and does NOT expand in --setenv argv — use
 	# $HOME so the shell substitutes before systemd-run is invoked.
 	local pathenv="PATH=/run/current-system/sw/bin:$HOME/.local/bin"

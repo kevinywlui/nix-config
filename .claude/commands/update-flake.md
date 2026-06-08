@@ -7,8 +7,8 @@ Parse `flake.lock` (at repo root) and record for every Tier 2 and Tier 3 input:
 - `owner` and `repo` (from the `locked` section — used to build the `gh` API path)
 
 Trust tiers:
-- **Tier 2:** `nixpkgs-unstable`, `home-manager`, `disko`, `sops-nix`, `nixos-hardware`
-- **Tier 3:** any input whose GitHub org is not `NixOS` or `nix-community` (currently: `claude-desktop` from `aaddrick/claude-desktop-debian`, pinned to an explicit rev in `flake.nix`)
+- **Tier 2:** `nixpkgs-unstable`, `home-manager`, `disko`, `sops-nix`, `nixos-hardware`. Note `sops-nix` is `github:Mic92/sops-nix` — a personal account, but Mic92 is a core nixpkgs/NixOS maintainer, so it's a trusted Tier 2 exception (see AGENTS.md "Input Trust Tiers").
+- **Tier 3:** any input whose GitHub org is not `NixOS` or `nix-community` (the `sops-nix` exception aside; currently: `claude-desktop` from `aaddrick/claude-desktop-debian`, pinned to an explicit rev in `flake.nix`)
 
 ## Step 2 — Run the update
 

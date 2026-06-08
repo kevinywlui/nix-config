@@ -65,11 +65,11 @@ in
   # eww — status bar + background clock (see base/desktop/.config/eww/)
   # ---------------------------------------------------------------------------
   #
-  # Split into two bound units so a daemon segfault self-heals. eww 0.6.0
-  # SIGSEGVs periodically (an upstream crash, not a config fault). Before this
-  # split, the daemon died and the output-watcher — which only re-opens windows
-  # on a sway `output` event — never noticed, so the bar stayed gone until the
-  # next monitor hotplug or sway reload. Now:
+  # Split into two bound units so a daemon segfault self-heals. eww SIGSEGVs
+  # periodically (an upstream crash, not a config fault). Without this split, a
+  # daemon crash goes unnoticed by the output-watcher — which only re-opens
+  # windows on a sway `output` event — so the bar stays gone until the next
+  # monitor hotplug or sway reload. With it:
   #
   #   eww-daemon : runs `eww daemon` in the foreground under systemd. A crash
   #                trips Restart=on-failure; Upholds= then re-pulls the watcher.
