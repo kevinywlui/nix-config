@@ -31,6 +31,18 @@ bindkey "^[[B" history-beginning-search-forward
 alias ls='ls --color'
 alias vim='nvim'
 
+# st FOO: ssh into the t480 and attach to tmux session FOO, creating it if absent.
+# `new-session -A` attaches when the session exists and creates it otherwise;
+# `ssh -t` forces a PTY so tmux gets a real terminal. SSH multiplexing (see
+# ~/.ssh/config) keeps repeated calls fast.
+st() {
+  if [[ -z "$1" ]]; then
+    echo "usage: st <session>" >&2
+    return 2
+  fi
+  ssh -t t480 "tmux new-session -A -s ${(q)1}"
+}
+
 # History
 HISTSIZE=100000
 HISTFILE=~/.zsh_history
