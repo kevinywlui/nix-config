@@ -78,7 +78,7 @@ To partition/format an already-booted target by hand (escape hatch, no full inst
 nix run github:nix-community/disko/latest -- --mode destroy,format,mount --flake .#fw13
 ```
 
-After first boot, bootstrap the dotfiles (clones this repo to `~/Code/dotfiles` and
+After first boot, bootstrap the dotfiles (clones this repo to `~/Code/nix-config` and
 installs zplug):
 
 ```bash

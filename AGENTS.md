@@ -28,7 +28,7 @@ Home Manager modules in this repository (`nix/modules/home/`) prefer **`mkOutOfS
 - **Agent guideline:** Do not migrate these configurations into declarative Nix attributes (e.g., `programs.zsh.shellAliases`) unless they are intended to be NixOS-exclusive.
 
 ## `dotfilesPath` points at the live working tree
-`dotfilesPath` (passed as a `specialArgs` value from `flake.nix`) is the literal absolute path `/home/klui/Code/dotfiles` — not `self.outPath`. Two failure modes motivate the literal:
+`dotfilesPath` (passed as a `specialArgs` value from `flake.nix`) is the literal absolute path `/home/klui/Code/nix-config` — not `self.outPath`. Two failure modes motivate the literal:
 
 1. **`mkOutOfStoreSymlink` would freeze.** Home Manager symlinks under `base/` are meant to track the live tree (see `base/README.md`). A `self.outPath` value bakes a `/nix/store` snapshot per generation, so edits to `base/` would only surface after a rebuild — defeating the entire cross-platform Stow strategy.
 2. **`NH_FLAKE` would go stale across shells.** `programs.nh.flake = "path:${dotfilesPath}"` is exported into every shell's environment. A per-eval `/nix/store/<hash>-source` value strands already-open shells on the prior generation's snapshot (cf. home-manager#8927). A byte-stable literal makes `NH_FLAKE` generation-invariant, so stale shells still hold the correct value.

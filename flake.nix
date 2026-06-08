@@ -34,7 +34,7 @@
       # stale-env regressions across shell sessions). See CLAUDE.md.
       # CHANGE-ME if relocating the working tree; keep in sync with
       # `cloneTarget` in nix/modules/nixos/profiles/core.nix.
-      dotfilesPath = "/home/klui/Code/dotfiles";
+      dotfilesPath = "/home/klui/Code/nix-config";
 
       nixpkgsConfig = {
         nixpkgs.overlays = [ (import ./nix/overlays inputs) ];

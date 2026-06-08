@@ -5,7 +5,7 @@ let
   # expandable literal (Nix string interpolation can't produce $HOME). Keep
   # this in sync with `dotfilesPath` in ../../../../flake.nix if you relocate
   # the working tree.
-  cloneTarget = "$HOME/Code/dotfiles"; # CHANGE-ME if relocating the working tree
+  cloneTarget = "$HOME/Code/nix-config"; # CHANGE-ME if relocating the working tree
   setupDotfiles = pkgs.writeShellApplication {
     name = "setup-dotfiles";
     runtimeInputs = with pkgs; [ git gnumake coreutils ];
@@ -25,7 +25,7 @@ let
         echo "Dotfiles already exist at ${cloneTarget}. Use --force to overwrite."
       else
         echo "Cloning dotfiles..."
-        git clone https://github.com/kevinywlui/dotfiles.git "${cloneTarget}"
+        git clone https://github.com/kevinywlui/nix-config.git "${cloneTarget}"
 
         echo "Installing zplug..."
         cd "${cloneTarget}"
