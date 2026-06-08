@@ -13,7 +13,16 @@ in
     ".gitconfig".source = link ".gitconfig";
     ".p10k.zsh".source = link ".p10k.zsh";
     ".local/bin/battery".source = link ".local/bin/battery";
+    ".ssh/config".source = link ".ssh/config";
   };
+
+  # The SSH config (above) multiplexes sessions over a control socket; ssh won't
+  # create the socket's parent dir, so ensure ~/.ssh/sockets exists at 0700.
+  # A real dir (not a symlink into the working tree) keeps runtime sockets out of git.
+  home.activation.sshSockets = config.lib.dag.entryAfter [ "writeBoundary" ] ''
+    run mkdir -p "$HOME/.ssh/sockets"
+    run chmod 0700 "$HOME/.ssh/sockets"
+  '';
 
   xdg.configFile = {
     "nvim".source = link ".config/nvim";
