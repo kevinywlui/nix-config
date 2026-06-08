@@ -66,6 +66,8 @@
 
 (defwidget audio-widget []
   (eventbox
+    ; Tooltip documents the bindings so no muscle memory is required (cf. nightlight-widget).
+    :tooltip "Left: switch device · Right: mute out · Mid: mute mic · Scroll: vol ±5%"
     :onclick       "setsid -f ~/.local/bin/audio-switch.sh"
     :onrightclick  "pactl set-sink-mute @DEFAULT_SINK@ toggle"
     :onmiddleclick "pactl set-source-mute @DEFAULT_SOURCE@ toggle"
