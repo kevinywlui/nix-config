@@ -39,6 +39,9 @@
       nixpkgsConfig = {
         nixpkgs.overlays = [ (import ./nix/overlays inputs) ];
         nixpkgs.config.allowUnfree = true;
+        # Required for androidenv.composeAndroidPackages (t480's declarative
+        # Android SDK for building round-earth-project). Inert on fw13.
+        nixpkgs.config.android_sdk.accept_license = true;
       };
 
       mkHost = { hwModule, hostModule }: nixpkgs.lib.nixosSystem {

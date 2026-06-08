@@ -1,8 +1,22 @@
 { pkgs, inputs, config, ... }:
 
+let
+  # Declarative Android SDK for building round-earth-project's bike-computer-android
+  # app on this headless server. fw13 gets its SDK from android-studio's GUI
+  # manager; t480 has no GUI, so the SDK is pinned in Nix. Versions track the
+  # app's compileSdk and the CI's build-tools — see bike-computer-android/
+  # app/build.gradle.kts and .github/workflows/android.yml ("android-35",
+  # "build-tools;35.0.0"). License acceptance is wired in flake.nix.
+  androidSdk = pkgs.androidenv.composeAndroidPackages {
+    platformVersions = [ "35" ];
+    buildToolsVersions = [ "35.0.0" ];
+  };
+  androidSdkRoot = "${androidSdk.androidsdk}/libexec/android-sdk";
+in
 {
   imports = [
     ../../modules/nixos/profiles/core.nix
+    ../../modules/nixos/profiles/dev.nix
     ../../modules/nixos/profiles/laptop-hardware.nix
     ../../modules/nixos/services/paperless.nix
     ../../modules/nixos/services/status-page.nix
@@ -77,5 +91,13 @@
       ../../modules/home/profiles/core.nix
       # Headless: no desktop profile.
     ];
+    # Point Gradle's Android plugin at the pinned SDK. With no sdk.dir in the
+    # (gitignored) local.properties on this host, AGP falls back to these env
+    # vars. ANDROID_HOME is AGP's canonical var; ANDROID_SDK_ROOT is set too for
+    # older tooling. arduino-cli (the .ino build) comes from profiles/dev.nix.
+    home.sessionVariables = {
+      ANDROID_HOME = androidSdkRoot;
+      ANDROID_SDK_ROOT = androidSdkRoot;
+    };
   };
 }

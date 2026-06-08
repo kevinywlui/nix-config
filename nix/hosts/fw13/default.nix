@@ -129,7 +129,10 @@
       ../../modules/home/profiles/desktop.nix
     ];
     home.packages = with pkgs; [
-      arduino-cli
+      # GUI dev IDEs + physical-flashing tools live per-host, kept out of
+      # profiles/dev.nix so the headless t480 imports that profile without them.
+      # (The shared CLI build tools — arduino-cli, gradle, etc. — are in dev.nix.)
+      android-studio
       arduino-ide
       esptool
       platformio
