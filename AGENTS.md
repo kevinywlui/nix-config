@@ -76,6 +76,8 @@ When running `nix flake update` or bumping individual inputs:
    - Changes to fetch logic or hash verification that could bypass content-addressing
    - Commits from unfamiliar contributors, especially to `flake.nix` or build scripts
    - Backdated timestamps or commits pushed at unusual hours
+
+   **Exception — official `nixos/nixpkgs` channels.** A channel advance is thousands of commits, so its compare diff is always API-truncated and a source-diff review is neither complete nor the right tool (nixpkgs' defense is its reviewer base + Hydra CI). For nixpkgs the `/update-flake` skill instead asserts **provenance** (clean fast-forward + reachable from the Hydra-gated channel branch, via `nix/scripts/flake-prescreen.sh`) and reviews the bounded **nvd closure delta** at build time against a security watchlist, drilling into the trust surface with `nix/scripts/flake-diff-paths.sh` (path-scoped, no 300-file cap). See the skill's Steps 3 and 6.
 5. **For Tier 3 inputs:** If anything looks suspicious, stop and raise it with the user before proceeding.
 6. **Build gate still applies:** After review passes, run `nh os build` before committing.
 
