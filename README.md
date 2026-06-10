@@ -51,6 +51,25 @@ The workflow utilizes `nh` for optimized Nix operations and `make` for user-leve
 | **Sync Dotfiles** | `make adopt` |
 | **Update Dependencies** | `/update-flake` (see `AGENTS.md` for the security review) |
 
+### Applying Userspace Updates Remotely
+`nh os switch` restarts most services, but deliberately skips some (dbus,
+logind) and never touches already-running user sessions. To fully apply a
+userspace update — important on the headless, LUKS-encrypted `t480`, where a
+real reboot would stall at the passphrase prompt — follow the switch with:
+```bash
+sudo systemctl soft-reboot
+```
+This restarts all of userspace under the new generation without going through
+the bootloader or initrd, so the disk stays unlocked. Kernel, initrd, and
+microcode changes still require a real reboot; if
+`/run/booted-system/kernel` and `/run/current-system/kernel` differ, a
+soft-reboot is not enough.
+
+> Requires `soft-reboot.target`, which nixpkgs only ships since 2026-05
+> ([NixOS/nixpkgs#514100](https://github.com/NixOS/nixpkgs/pull/514100)). On an
+> older pin, opt in with
+> `systemd.additionalUpstreamSystemUnits = [ "soft-reboot.target" "systemd-soft-reboot.service" ];`.
+
 ### Secrets Management
 Workflow, key policy, and supply-chain rules live in `AGENTS.md`.
 
