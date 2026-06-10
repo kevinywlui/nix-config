@@ -164,14 +164,24 @@ in
 
   systemd.user.services.check-nix-update = {
     Unit = {
-      Description = "Check if NixOS configuration is stale";
+      Description = "Check if NixOS configuration or flake inputs are stale";
       After = [ "graphical-session.target" ];
     };
     Service = {
       Type = "oneshot";
       ExecStart = "${pkgs.writeShellScript "check-update" ''
+        # Stale running system: built more than 30 days ago → time to switch.
         if [ $(($(${pkgs.coreutils}/bin/date +%s) - $(${pkgs.coreutils}/bin/stat -c %Y /run/current-system))) -gt 2592000 ]; then
           ${pkgs.libnotify}/bin/notify-send "System Update" "Your running system is over 30 days old. Consider running nh os switch." -u normal
+        fi
+        # Stale flake inputs: newest locked input more than 30 days old → time to
+        # run /update-flake. lastModified (vs the file mtime) survives checkouts.
+        lock="${dotfilesPath}/flake.lock"
+        if [ -r "$lock" ]; then
+          newest=$(${pkgs.jq}/bin/jq '[.nodes[].locked.lastModified // empty] | max // 0' "$lock")
+          if [ "$newest" -gt 0 ] && [ $(($(${pkgs.coreutils}/bin/date +%s) - newest)) -gt 2592000 ]; then
+            ${pkgs.libnotify}/bin/notify-send "Flake inputs stale" "Newest flake input is over 30 days old. Run /update-flake to review updates." -u normal
+          fi
         fi
       ''}";
     };
