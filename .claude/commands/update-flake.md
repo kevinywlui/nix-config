@@ -1,15 +1,25 @@
 Update flake inputs with security pre-screening and parallel review.
 
-## Step 1 — Capture pre-update state
+## Step 1 — Run the gates (mechanized), and how every changed node is classified
 
-Parse `flake.lock` (at repo root) and record for every Tier 2 and Tier 3 input:
-- `rev` (current locked commit)
-- `owner` and `repo` (from the `locked` section — used to build the `gh` API path)
-- `original.ref` (the tracked branch, if any — e.g. `nixos-unstable`, `nixos-25.11`). Needed for the prescreen's provenance check on official nixpkgs channels. `nix flake metadata --json | jq -r '.locks.nodes'` exposes both `locked` and `original`.
+The deterministic spine — update, enumerate, classify, prescreen, build, and surface the nvd watchlist — is mechanized in one script:
 
-Trust tiers:
-- **Tier 2:** `nixpkgs-unstable`, `home-manager`, `disko`, `sops-nix`, `nixos-hardware`. Note `sops-nix` is `github:Mic92/sops-nix` — a personal account, but Mic92 is a core nixpkgs/NixOS maintainer, so it's a trusted Tier 2 exception (see AGENTS.md "Input Trust Tiers").
-- **Tier 3:** any input whose GitHub org is not `NixOS` or `nix-community` (the `sops-nix` exception aside; currently: `claude-desktop` from `aaddrick/claude-desktop-debian`, pinned to an explicit rev in `flake.nix`)
+```
+nix/scripts/flake-update-gates.sh            # all inputs; or: ... <input-name>
+```
+
+It prints exactly one verdict:
+- **PASS** — gates clean, build green, nothing queued, no watchlist movement → go to **Step 7**.
+- **NEEDS-HUMAN** — it lists a source-review queue and/or watchlist movement → do **Step 4** and **Step 6** on what it lists, then Step 7.
+- **ABORT** — `nh os build` failed, or a changed node could not be classified → stop and investigate; nothing is committed.
+
+`nix/scripts/flake-update-gates.sh --classify` is a no-side-effect dry run of the routing below. Steps 2, 3, and 5 are the detail of what the sequencer does (and the manual fallback); Steps 4, 6, 7 are the human parts.
+
+**Classification — enumerate EVERY node in `flake.lock` and dispatch on node `type` first, then owner. Never a hardcoded input list: transitive nodes bump too.** (`nix flake metadata --json | jq '.locks.nodes'` exposes `.locked` type/owner/repo/rev/url and `.original.ref`, the tracked branch.)
+- **`github`, owner `NixOS`/`nix-community` (case-insensitive), or `Mic92/sops-nix`** → **Tier 2**, deterministic prescreen. `sops-nix` is a personal account but Mic92 is a core nixpkgs/NixOS maintainer — a trusted Tier 2 exception (AGENTS.md "Input Trust Tiers"). `nixos/nixpkgs` additionally runs **provenance mode** using its tracked branch.
+- **`github`, any other org** → **Tier 3**, full source review. In this lock: `flake-parts` (`hercules-ci`) and the rev-pinned `claude-desktop` (`aaddrick`). A hardcoded tier list silently skipped `flake-parts` — type-based enumeration is the fix.
+- **`tarball` from `releases.nixos.org`/`channels.nixos.org`** → the nixpkgs channel delivered as a tarball (this lock carries one named `nixpkgs`, pulled transitively). Its rev is in `.locked.rev`; the URL path maps to a channel branch (`releases.nixos.org/nixos/unstable/…` → `nixos-unstable`) and it is gated as `nixos/nixpkgs` provenance.
+- **Any other type (`path`/`git`/`indirect`) or an unrecognized tarball host** → **unclassifiable: ABORT**, never a silent skip.
 
 ## Step 2 — Run the update
 
@@ -25,7 +35,7 @@ nix flake update <input-name>
 
 ## Step 3 — Identify what changed and pre-screen
 
-Run `git diff flake.lock`. For each Tier 2/3 input whose `rev` changed:
+*(The sequencer automates this. The following is what it does internally and the manual fallback.)* Enumerate every changed node (Step 1) — `git diff flake.lock` plus, for rev-pinned inputs, `git diff flake.nix`. For each changed node, by its classification:
 
 - **Tier 3 inputs:** skip pre-screening — always add to the review queue. Every change to a low-visibility repo warrants a full LLM review.
   - **Rev-pinned Tier 3 inputs** (e.g. `claude-desktop`, pinned to an explicit SHA in `flake.nix`) do **not** move on `nix flake update`, so they produce no `flake.lock` diff. Detect a bump from `git diff flake.nix` instead — old rev = the pre-edit SHA, new rev = the post-edit SHA — and always queue it. Never assume an unchanged lock means an unchanged Tier 3 input.
@@ -41,7 +51,7 @@ If the review queue is empty after pre-screening, skip to Step 5.
 
 ## Step 4 — Parallel security review
 
-This step reviews the *source diff* of queued inputs — appropriate for small/medium repos where the full diff fits under the 300-file cap. Official `nixos/nixpkgs` is **not** reviewed here: it is gated by provenance in Step 3 and by the closure delta in Step 6, because its source diff is always truncated (see "Provenance mode" above). So the queue at this point is normal-sized Tier 2/3 inputs (home-manager, disko, sops-nix, claude-desktop, …).
+This step reviews the *source diff* of queued inputs — appropriate for small/medium repos where the full diff fits under the 300-file cap. Official `nixos/nixpkgs` is **not** reviewed here: it is gated by provenance in Step 3 and by the closure delta in Step 6, because its source diff is always truncated (see "Provenance mode" above). So the queue at this point is normal-sized Tier 2/3 inputs (home-manager, disko, sops-nix, flake-parts, claude-desktop, …) — exactly the items the sequencer listed under NEEDS-HUMAN.
 
 Spawn **all** queued inputs as separate subagents simultaneously (in parallel — do not wait for one before starting the next). For each, use this brief:
 
