@@ -161,9 +161,14 @@ while IFS=$'\t' read -r name type owner repo ref rev url; do
 		local_repo="$a1"
 		branch="$a2"
 		[ "$branch" = "-" ] && branch=""
-		printf '    %-16s %-8s %-26s T2  -> prescreen%s\n' \
-			"$name" "$type" "$local_repo" \
-			"${branch:+ (provenance: $branch)}"
+		# Provenance mode only engages for nixos/nixpkgs (see flake-prescreen.sh);
+		# elsewhere the branch arg is passed but harmlessly ignored, so don't
+		# claim provenance for it — that gate runs the normal content scan.
+		gate="prescreen"
+		[ -n "$branch" ] && [ "${local_repo,,}" = "nixos/nixpkgs" ] &&
+			gate="prescreen (provenance: $branch)"
+		printf '    %-16s %-8s %-26s T2  -> %s\n' \
+			"$name" "$type" "$local_repo" "$gate"
 		# flake-prescreen.sh exits 0 = SKIP, 1 = REVIEW (fail-closed).
 		if out="$("$PRESCREEN" "$local_repo" "$old" "$rev" "$branch" 2>&1)"; then
 			SKIPPED=$((SKIPPED + 1))
