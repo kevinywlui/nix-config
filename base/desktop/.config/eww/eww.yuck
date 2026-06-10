@@ -80,7 +80,8 @@
       (label :class {audio.mic_muted ? "audio-muted" : "audio-active"} :text {audio.mic_pct}))))
 
 (defwidget battery-widget []
-  (label :class {battery.class} :text {battery.text}))
+  ; Tooltip surfaces total draw (W) + top CPU procs as a power proxy (cf. nightlight/audio).
+  (label :class {battery.class} :tooltip {battery.tooltip} :text {battery.text}))
 
 (defwidget clock-widget []
   (label :class "clock" :text datetime))
