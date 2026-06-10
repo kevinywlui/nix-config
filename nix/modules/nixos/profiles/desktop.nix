@@ -105,6 +105,12 @@
 
   programs.steam.enable = true;
 
+  # Store-path-stable symlink to mimalloc, named *-link so the indirection is
+  # obvious. Referenced from Steam per-game launch options (a raw /nix/store
+  # path there would go stale on every mimalloc bump), e.g. for Factorio:
+  #   LD_PRELOAD=/etc/libmimalloc-link.so MIMALLOC_LARGE_OS_PAGES=1 %command%
+  environment.etc."libmimalloc-link.so".source = "${pkgs.mimalloc}/lib/libmimalloc.so";
+
   services.greetd = {
     enable = true;
     settings = {
