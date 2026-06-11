@@ -20,7 +20,7 @@ t_empty_val=$(echo "$info" | awk '/time to empty:/{print $4}')
 t_empty_unit=$(echo "$info" | awk '/time to empty:/{print $5}')
 
 # Battery name + cycle count come from sysfs (upower doesn't always expose cycles).
-bat_sysfs=$(ls -d /sys/class/power_supply/BAT* 2>/dev/null | head -1)
+bat_sysfs=$(find /sys/class/power_supply -maxdepth 1 -name 'BAT*' 2>/dev/null | sort | head -1)
 batname=$(basename "$bat_sysfs" 2>/dev/null)
 cycles=""
 [ -r "$bat_sysfs/cycle_count" ] && cycles=$(cat "$bat_sysfs/cycle_count")
