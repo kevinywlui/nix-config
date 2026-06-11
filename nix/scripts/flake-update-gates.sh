@@ -133,14 +133,14 @@ fi
 # --- 2. enumerate changed nodes, classify, gate -----------------------------
 echo
 echo "==> Changed nodes  (type -> owner -> routing -> gate)"
-QUEUE=()      # human source-review queue: "name  owner/repo  reason"
-ABORTS=()     # unclassifiable nodes
+QUEUE=()  # human source-review queue: "name  owner/repo  reason"
+ABORTS=() # unclassifiable nodes
 SKIPPED=0
 CHANGED=0
 
 while IFS=$'\t' read -r name type owner repo ref rev url; do
 	old="${OLD_REV[$name]:-}"
-	[ "$old" = "$rev" ] && continue   # unchanged
+	[ "$old" = "$rev" ] && continue # unchanged
 	CHANGED=$((CHANGED + 1))
 
 	routing="$(classify "$type" "$owner" "$repo" "$ref" "$url")"
@@ -241,7 +241,10 @@ if [ "${#REASONS[@]}" -eq 0 ]; then
 fi
 
 echo "VERDICT: NEEDS-HUMAN"
-printf '    %s.\n' "$(IFS='; '; echo "${REASONS[*]}")"
+printf '    %s.\n' "$(
+	IFS='; '
+	echo "${REASONS[*]}"
+)"
 if [ "${#QUEUE[@]}" -gt 0 ]; then
 	echo "    Review queue:"
 	printf '      - %s\n' "${QUEUE[@]}"
