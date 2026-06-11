@@ -17,7 +17,7 @@ It prints exactly one verdict:
 
 **Classification — enumerate EVERY node in `flake.lock` and dispatch on node `type` first, then owner. Never a hardcoded input list: transitive nodes bump too.** (`nix flake metadata --json | jq '.locks.nodes'` exposes `.locked` type/owner/repo/rev/url and `.original.ref`, the tracked branch.)
 - **`github`, owner `NixOS`/`nix-community` (case-insensitive), or `Mic92/sops-nix`** → **Tier 2**, deterministic prescreen. `sops-nix` is a personal account but Mic92 is a core nixpkgs/NixOS maintainer — a trusted Tier 2 exception (AGENTS.md "Input Trust Tiers"). `nixos/nixpkgs` additionally runs **provenance mode** using its tracked branch.
-- **`github`, any other org** → **Tier 3**, full source review. In this lock: `flake-parts` (`hercules-ci`) and the rev-pinned `claude-desktop` (`aaddrick`). A hardcoded tier list silently skipped `flake-parts` — type-based enumeration is the fix.
+- **`github`, any other org** → **Tier 3**, full source review. This lock currently has **no** Tier 3 inputs (the former `claude-desktop` (`aaddrick`) and its transitive `flake-parts` (`hercules-ci`) were removed). Keep dispatching on `type`/owner anyway — a hardcoded tier list would silently skip a reintroduced or transitive Tier 3 node; type-based enumeration is the fix.
 - **`tarball` from `releases.nixos.org`/`channels.nixos.org`** → the nixpkgs channel delivered as a tarball (this lock carries one named `nixpkgs`, pulled transitively). Its rev is in `.locked.rev`; the URL path maps to a channel branch (`releases.nixos.org/nixos/unstable/…` → `nixos-unstable`) and it is gated as `nixos/nixpkgs` provenance.
 - **Any other type (`path`/`git`/`indirect`) or an unrecognized tarball host** → **unclassifiable: ABORT**, never a silent skip.
 
@@ -38,7 +38,7 @@ nix flake update <input-name>
 *(The sequencer automates this. The following is what it does internally and the manual fallback.)* Enumerate every changed node (Step 1) — `git diff flake.lock` plus, for rev-pinned inputs, `git diff flake.nix`. For each changed node, by its classification:
 
 - **Tier 3 inputs:** skip pre-screening — always add to the review queue. Every change to a low-visibility repo warrants a full LLM review.
-  - **Rev-pinned Tier 3 inputs** (e.g. `claude-desktop`, pinned to an explicit SHA in `flake.nix`) do **not** move on `nix flake update`, so they produce no `flake.lock` diff. Detect a bump from `git diff flake.nix` instead — old rev = the pre-edit SHA, new rev = the post-edit SHA — and always queue it. Never assume an unchanged lock means an unchanged Tier 3 input.
+  - **Rev-pinned Tier 3 inputs** (any input pinned to an explicit SHA in `flake.nix`; none exist in this lock today) do **not** move on `nix flake update`, so they produce no `flake.lock` diff. Detect a bump from `git diff flake.nix` instead — old rev = the pre-edit SHA, new rev = the post-edit SHA — and always queue it. Never assume an unchanged lock means an unchanged Tier 3 input.
 - **Tier 2 inputs:** run the pre-screening script (exit 0 = SKIP, exit 1 = REVIEW). Pass the tracked branch as a 4th arg whenever the input has an `original.ref` — it is required for `nixos/nixpkgs` (enables provenance mode) and harmless elsewhere:
   ```
   nix/scripts/flake-prescreen.sh <owner>/<repo> <old-rev> <new-rev> [tracked-branch]
@@ -51,7 +51,7 @@ If the review queue is empty after pre-screening, skip to Step 5.
 
 ## Step 4 — Parallel security review
 
-This step reviews the *source diff* of queued inputs — appropriate for small/medium repos where the full diff fits under the 300-file cap. Official `nixos/nixpkgs` is **not** reviewed here: it is gated by provenance in Step 3 and by the closure delta in Step 6, because its source diff is always truncated (see "Provenance mode" above). So the queue at this point is normal-sized Tier 2/3 inputs (home-manager, disko, sops-nix, flake-parts, claude-desktop, …) — exactly the items the sequencer listed under NEEDS-HUMAN.
+This step reviews the *source diff* of queued inputs — appropriate for small/medium repos where the full diff fits under the 300-file cap. Official `nixos/nixpkgs` is **not** reviewed here: it is gated by provenance in Step 3 and by the closure delta in Step 6, because its source diff is always truncated (see "Provenance mode" above). So the queue at this point is normal-sized Tier 2/3 inputs (home-manager, disko, sops-nix, and any reintroduced Tier 3 input) — exactly the items the sequencer listed under NEEDS-HUMAN.
 
 Spawn **all** queued inputs as separate subagents simultaneously (in parallel — do not wait for one before starting the next). For each, use this brief:
 

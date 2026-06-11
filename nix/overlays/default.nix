@@ -13,13 +13,6 @@
 #     `inputs: final: prev: { ... }` function and merge it into the
 #     attrset below with `// (import ./<name>.nix inputs final prev)`.
 inputs: final: prev: {
-  # Tier 3 input (see flake.nix + AGENTS.md). Exposed as pkgs.claude-desktop so
-  # hosts consume it like any other package. Non-FHS variant chosen for least
-  # privilege; upstream also ships `claude-desktop-fhs`, which bundles
-  # docker/uv/node to host MCP servers — swap the attr below only if a concrete
-  # MCP workflow needs that larger ambient toolchain.
-  claude-desktop = inputs.claude-desktop.packages.${final.stdenv.hostPlatform.system}.claude-desktop;
-
   unstable = import inputs.nixpkgs-unstable {
     system = final.stdenv.hostPlatform.system;
     config.allowUnfree = true;
