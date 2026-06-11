@@ -96,6 +96,32 @@
         default = { imports = builtins.attrValues homeManagerModulesAttrs; };
       };
 
+      # Host toplevels as flake checks: `nix build .#checks...` is the CI build
+      # gate, and `nix flake check` evaluates every host without naming them.
+      checks.x86_64-linux = {
+        fw13 = self.nixosConfigurations.fw13.config.system.build.toplevel;
+        t480 = self.nixosConfigurations.t480.config.system.build.toplevel;
+      };
+
+      # Pre-commit/CI toolchain pinned to this flake's locked nixpkgs — the
+      # same release the hosts install these tools from (profiles/dev.nix), so
+      # formatter output (shfmt, nixpkgs-fmt) is identical locally and in CI.
+      # CI previously installed them from the floating nixos-unstable channel,
+      # and a newer shfmt there broke main with formatting the local shfmt
+      # never asked for. nvd is included for CI's closure diff.
+      devShells.x86_64-linux.default =
+        let pkgs = nixpkgs.legacyPackages.x86_64-linux; in
+        pkgs.mkShell {
+          packages = with pkgs; [
+            gitleaks
+            nixpkgs-fmt
+            nvd
+            pre-commit
+            shellcheck
+            shfmt
+          ];
+        };
+
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixpkgs-fmt;
     };
 }
