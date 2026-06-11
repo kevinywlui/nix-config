@@ -114,6 +114,6 @@ Before committing, run the pre-commit hooks through the updated lock rather than
 nix develop -c pre-commit run --all-files
 ```
 
-The flake devShell pins the hook toolchain (shfmt, nixpkgs-fmt, shellcheck, gitleaks) to the nixpkgs rev in the working tree's `flake.lock` — exactly the versions CI will use on this change — while plain `pre-commit` runs the *previous* generation's tools until the user switches. This closes the one-commit skew window: if the bump changed a formatter's behavior, the churn surfaces here instead of failing CI (this is how unstable's shfmt broke main on 2026-06-10, before the toolchain was lock-pinned). Fold any resulting reformatting into the same commit.
+This runs the hooks with the toolchain pinned by the working tree's `flake.lock` — exactly what CI uses — instead of the activated system's older tools, so any formatter churn from the bump surfaces here rather than failing CI (rationale: the devShell comment in `flake.nix`). Fold any resulting reformatting into the same commit.
 
 Commit `flake.lock` (plus any hook-driven reformatting) immediately with a message listing each updated input and its new rev. Do not wait for confirmation. Remind the user to run `nh os switch`.

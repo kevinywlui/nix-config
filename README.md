@@ -83,12 +83,14 @@ This repository uses `pre-commit` to enforce high standards before code reaches 
 *   **Linting:** `shellcheck` for scripts and `nixpkgs-fmt` for Nix expressions.
 *   **Validation:** `nix flake check` ensures the Flake graph remains valid.
 
-GitHub Actions then re-runs the hooks (with tool versions pinned by `flake.lock`
-via the flake's devShell, so CI and local results never drift) and builds the
-full system closure for every host — the same toplevel `nh os build` produces.
-On pull requests it also posts an `nvd` closure diff against the merge-base to
-the job summary, warning on any package removals, mirroring the local
-`nh os build` review contract described in `AGENTS.md`.
+GitHub Actions then re-runs the hooks with tool versions pinned by `flake.lock`
+via the flake's devShell — `nix develop -c pre-commit run --all-files`
+reproduces CI exactly, while plain `pre-commit` tracks the activated
+generation's tools — and builds the full system closure for every host, the
+same toplevel `nh os build` produces. This is a build-level gate; boot and
+activation behavior are not exercised. On pull requests it also posts an `nvd`
+closure diff against the merge-base to the job summary, warning on any package
+removals, mirroring the local `nh os build` review contract in `AGENTS.md`.
 
 ### AI-Augmented Engineering
 Agent context for the installed AI tools (`claude-code`, `gemini-cli`) lives in `AGENTS.md` (symlinked to `CLAUDE.md` and `GEMINI.md`).

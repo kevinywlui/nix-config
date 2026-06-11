@@ -235,7 +235,9 @@ REASONS=()
 if [ "${#REASONS[@]}" -eq 0 ]; then
 	echo "VERDICT: PASS"
 	echo "    $CHANGED node(s) changed, $SKIPPED prescreened SKIP, build green,"
-	echo "    nothing queued and no watchlist movement. Commit when ready:"
+	echo "    nothing queued and no watchlist movement. Re-run hooks with the"
+	echo "    lock-pinned toolchain (Step 7), then commit:"
+	echo "      nix develop -c pre-commit run --all-files"
 	echo "      git -C $REPO_ROOT add flake.lock && git -C $REPO_ROOT commit"
 	exit 0
 fi
@@ -250,5 +252,6 @@ if [ "${#QUEUE[@]}" -gt 0 ]; then
 	printf '      - %s\n' "${QUEUE[@]}"
 fi
 echo "    Build is green; nothing committed. Clear the queue + glance the"
-echo "    watchlist (Step 4/6), then commit flake.lock and run 'nh os switch'."
+echo "    watchlist (Step 4/6), re-run hooks via 'nix develop -c pre-commit"
+echo "    run --all-files' (Step 7), then commit flake.lock and run 'nh os switch'."
 exit 10

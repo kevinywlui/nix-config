@@ -11,7 +11,9 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR pushes supersede each other, but every main push must run to
+  # completion so each merged commit keeps a verified closure build.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -19,15 +21,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
 
       - name: Run pre-commit
-        # Tools come from the flake devShell, i.e. the exact versions locked
-        # in flake.lock — the same nixpkgs release the hosts install them
-        # from. Installing from a floating channel here previously let CI's
-        # shfmt drift ahead of the shfmt that formatted the tree, breaking
-        # main on formatting no local hook ever produced.
+        # Hook tools come from the flake devShell, pinned by flake.lock — see
+        # the devShell comment in flake.nix for the rationale.
         run: nix develop --command pre-commit run --all-files --show-diff-on-failure
 
   build:
@@ -49,49 +50,56 @@ jobs:
 
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          # Full history so the closure-diff step can check out the merge-base.
+          # Full history: the closure-diff step resolves the merge-base and
+          # builds it from the local object store via a git+file flake ref.
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
 
       - name: Build ${{ matrix.host }} system closure
-        # The actual stability gate: builds the same toplevel derivation
-        # `nh os build` produces locally. The previous --dry-run only
-        # instantiated the derivation graph, so real build failures (broken
-        # patches, failing source builds, bad hashes) sailed through CI.
-        run: nix build -L .#checks.x86_64-linux.${{ matrix.host }} -o result-new
-
-      - name: Build merge-base closure for diff
-        if: github.event_name == 'pull_request'
-        # Build what the target branch produces so nvd can diff against it.
-        # Cheap in practice: the store already holds everything shared with
-        # the PR build. A broken base is downgraded to a warning — the PR
-        # itself already passed the gate above.
+        # Build-level gate: the same toplevel derivation `nh os build`
+        # verifies locally (boot/activation behavior is not exercised). The
+        # previous --dry-run only instantiated the derivation graph, so real
+        # build failures (broken patches, bad hashes) sailed through CI.
         run: |
-          base="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
-          git -c advice.detachedHead=false checkout "$base"
-          nix build .#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel -o result-base ||
-            echo "::warning title=Closure diff skipped (${{ matrix.host }})::merge-base $base failed to build"
-          git checkout -
+          nix build -L \
+            .#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel \
+            -o result-new
 
-      - name: Closure diff (nvd)
+      - name: Closure diff vs merge-base (nvd)
         if: github.event_name == 'pull_request'
-        # CI half of the repo's `nh os build` + nvd contract: every package
-        # addition, removal, and version change is surfaced at review time.
-        # Removals warn rather than fail — intentional removals are
-        # legitimate, but silent ones must be visible to the reviewer.
+        # CI half of the repo's `nh os build` + nvd contract (AGENTS.md):
+        # surface every package addition/removal/version change at review
+        # time, warning on removals (intentional ones are legitimate — the
+        # reviewer decides). Advisory by design: each stage degrades to a
+        # tagged warning because the build gate above has already passed.
+        # The base closure is built straight from the merge-base commit via
+        # a git+file flake ref, so the working tree is never touched.
         run: |
-          if [ ! -e result-base ]; then
-            echo "No merge-base closure; diff skipped." >> "$GITHUB_STEP_SUMMARY"
+          df -h /
+          if ! base="$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)"; then
+            echo "::warning title=Closure diff skipped (${{ matrix.host }})::could not resolve merge-base with origin/$GITHUB_BASE_REF"
             exit 0
           fi
-          diff="$(nix develop --command nvd diff ./result-base ./result-new)"
+          if ! nix build \
+            "git+file://$PWD?rev=$base#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel" \
+            -o result-base; then
+            df -h /
+            echo "::warning title=Closure diff skipped (${{ matrix.host }})::merge-base $base failed to build — check the log above to distinguish a broken base from disk exhaustion"
+            exit 0
+          fi
+          if ! diff="$(nix develop --command nvd diff ./result-base ./result-new)"; then
+            echo "::warning title=Closure diff skipped (${{ matrix.host }})::nvd diff failed"
+            exit 0
+          fi
           echo "$diff"
           {
             echo "## nvd closure diff: ${{ matrix.host }}"
-            echo '```'
-            echo "$diff"
-            echo '```'
+            echo ""
+            # Indented code block: keeps PR-influenced package names from
+            # being interpreted as Markdown in the summary.
+            echo "$diff" | sed 's/^/    /'
           } >> "$GITHUB_STEP_SUMMARY"
           if echo "$diff" | grep -q '^\[R'; then
             echo "::warning title=Packages removed on ${{ matrix.host }}::nvd reports removed packages — verify each is intentional (see job summary)."

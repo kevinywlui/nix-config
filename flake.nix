@@ -96,13 +96,6 @@
         default = { imports = builtins.attrValues homeManagerModulesAttrs; };
       };
 
-      # Host toplevels as flake checks: `nix build .#checks...` is the CI build
-      # gate, and `nix flake check` evaluates every host without naming them.
-      checks.x86_64-linux = {
-        fw13 = self.nixosConfigurations.fw13.config.system.build.toplevel;
-        t480 = self.nixosConfigurations.t480.config.system.build.toplevel;
-      };
-
       # Pre-commit/CI toolchain pinned to this flake's locked nixpkgs — the
       # same release the hosts install these tools from (profiles/dev.nix), so
       # formatter output (shfmt, nixpkgs-fmt) is identical locally and in CI.
