@@ -74,6 +74,9 @@ in
 
   time.timeZone = "America/Los_Angeles";
 
+  # systemd-based stage-1 init (initrd). Default for all hosts.
+  boot.initrd.systemd.enable = true;
+
   # Enable BBR congestion control with fq qdisc for improved throughput and latency
   boot.kernel.sysctl = {
     "net.core.default_qdisc" = "fq";
