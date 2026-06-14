@@ -33,6 +33,14 @@ in
   boot.loader.systemd-boot.configurationLimit = 10;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  boot.kernelParams = [
+    "nmi_watchdog=0"   # reduce periodic per-CPU wakeups; NMI watchdog is server/debug-only
+    "consoleblank=60"  # blank the unused VT framebuffer after 60s idle
+  ];
+  # Stretch the writeback flush interval 5s->15s to coalesce disk wakeups on
+  # this idle server (proven on fw13). Merges with core.nix's sysctl attrs.
+  boot.kernel.sysctl."vm.dirty_writeback_centisecs" = 1500;
+
   services.status-page = {
     enable = true;
     monitoredServices = [
