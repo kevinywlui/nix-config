@@ -81,6 +81,16 @@ in
     pkgs.nvme-cli
   ];
 
+  # Wired headless server: the Wi-Fi (8265, 8086:24fd, behind PCIe root port
+  # 1c.6) and Bluetooth (8087:0a2b, USB) radios are never used. Disable PCI
+  # wakeup on the Wi-Fi card so it can reach D3cold instead of holding its root
+  # port out of L1 ASPM / deep package C-states (mirrors fw13's AX210 rule);
+  # blacklist btusb so the Bluetooth radio is never bound/powered.
+  services.udev.extraRules = ''
+    ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x8086", ATTR{device}=="0x24fd", ATTR{power/wakeup}="disabled"
+  '';
+  boot.blacklistedKernelModules = [ "btusb" ];
+
   systemd.services.hc-ping = {
     description = "Health Check Ping";
     after = [ "network-online.target" ];
