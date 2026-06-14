@@ -127,6 +127,7 @@ in
         fzf
         gh
         jj
+        jq
         nushell
         ripgrep
         starship
