@@ -62,6 +62,13 @@ in
       # rails so the codec autosuspends regardless of AC/BAT (mirrors fw13).
       SOUND_POWER_SAVE_ON_AC = lib.mkForce 60;
       SOUND_POWER_SAVE_ON_BAT = lib.mkForce 60;
+
+      # laptop-hardware.nix leaves AC ASPM at "default" (firmware-decided, often
+      # L1 disabled on ThinkPads). Deep package C-states require L1 ASPM on the
+      # active root ports (NVMe at 1d.2, Wi-Fi at 1c.6). Force "powersave" (L0s+
+      # L1) on this always-AC host. "powersave" gets the C-state unblock without
+      # the L1-substate NVMe risk of "powersupersave".
+      PCIE_ASPM_ON_AC = lib.mkForce "powersave";
     };
   };
 
