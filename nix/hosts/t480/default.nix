@@ -1,4 +1,4 @@
-{ pkgs, inputs, config, ... }:
+{ pkgs, inputs, config, lib, ... }:
 
 let
   # Declarative Android SDK for building round-earth-project's bike-computer-android
@@ -42,6 +42,11 @@ in
   # Prevent suspend when lid is closed; t480 runs headless
   services.logind.settings.Login.HandleLidSwitch = "ignore";
 
+  # 60s lets the HDA codec runtime-suspend during silence so the package can
+  # reach deep C-states (PC8/PC10) at idle. On a headless box there's no audio
+  # output, so the usual pop/click-on-resume concern doesn't apply. Mirrors fw13.
+  boot.extraModprobeConfig = "options snd_hda_intel power_save=60";
+
   services.tlp = {
     settings = {
       # Battery charge thresholds for longevity (Always plugged in)
@@ -50,8 +55,24 @@ in
       STOP_CHARGE_THRESH_BAT0 = 60;
       START_CHARGE_THRESH_BAT1 = 50;
       STOP_CHARGE_THRESH_BAT1 = 60;
+
+      # laptop-hardware.nix sets SOUND_POWER_SAVE_ON_AC=0, which on AC would
+      # re-assert power_save=0 over the modprobe option above and keep the codec
+      # powered — pinning the package out of deep C-states. Force 60 on both
+      # rails so the codec autosuspends regardless of AC/BAT (mirrors fw13).
+      SOUND_POWER_SAVE_ON_AC = lib.mkForce 60;
+      SOUND_POWER_SAVE_ON_BAT = lib.mkForce 60;
     };
   };
+
+  # Power-measurement tooling (read-only): turbostat reports PkgWatt + package
+  # C-state residency (Pkg%pc8/pc10) — the proxy we validate idle tuning against
+  # since this headless AC host has no battery-discharge signal; nvme-cli reads
+  # NVMe APST low-power state config.
+  environment.systemPackages = [
+    pkgs.linuxPackages.turbostat
+    pkgs.nvme-cli
+  ];
 
   systemd.services.hc-ping = {
     description = "Health Check Ping";
