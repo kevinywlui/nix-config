@@ -4,6 +4,7 @@
   imports = [
     ../../modules/nixos/profiles/core.nix
     ../../modules/nixos/profiles/dev.nix
+    ../../modules/nixos/profiles/agent-tools.nix
     ../../modules/nixos/profiles/desktop.nix
     ../../modules/nixos/profiles/laptop-hardware.nix
     ./hardware.nix

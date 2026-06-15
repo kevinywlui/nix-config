@@ -17,6 +17,7 @@ in
   imports = [
     ../../modules/nixos/profiles/core.nix
     ../../modules/nixos/profiles/dev.nix
+    ../../modules/nixos/profiles/agent-tools.nix
     ../../modules/nixos/profiles/laptop-hardware.nix
     ../../modules/nixos/services/paperless.nix
     ../../modules/nixos/services/status-page.nix

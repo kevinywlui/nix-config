@@ -53,6 +53,7 @@
         core = ./nix/modules/nixos/profiles/core.nix;
         desktop = ./nix/modules/nixos/profiles/desktop.nix;
         dev = ./nix/modules/nixos/profiles/dev.nix;
+        agent-tools = ./nix/modules/nixos/profiles/agent-tools.nix;
         laptop-hardware = ./nix/modules/nixos/profiles/laptop-hardware.nix;
         paperless = ./nix/modules/nixos/services/paperless.nix;
         status-page = ./nix/modules/nixos/services/status-page.nix;
