@@ -1,7 +1,6 @@
 package todotxt
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,12 +9,6 @@ import (
 	"sync"
 	"time"
 )
-
-// ErrChanged is returned by a guarded mutation when the targeted task no longer
-// matches what the caller expected — i.e. the list shifted between render and
-// submit (a stale index from a double-tap or a second device). Callers should
-// treat it as "nothing done, show fresh state", never as a hard error.
-var ErrChanged = errors.New("task changed since it was loaded")
 
 // File names within the store directory.
 const (
@@ -105,12 +98,10 @@ func (s *Store) Append(name, line string) error {
 }
 
 // Transfer atomically moves the task at id from srcName to destName, applying
-// transform (if non-nil) to the task as it moves. If want != "", the task at id
-// must serialise to exactly want or ErrChanged is returned and nothing is
-// moved — a stale-index guard. The whole read-validate-append-remove sequence
-// runs under a single lock acquisition, so concurrent requests can never shift
-// indices between the check and the act.
-func (s *Store) Transfer(srcName string, id int, want, destName string, transform func(Task) Task) error {
+// transform (if non-nil) to the task as it moves. The whole read-validate-
+// append-remove sequence runs under a single lock acquisition, so concurrent
+// requests can never shift indices between the check and the act.
+func (s *Store) Transfer(srcName string, id int, destName string, transform func(Task) Task) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	src, err := s.readLocked(srcName)
@@ -119,9 +110,6 @@ func (s *Store) Transfer(srcName string, id int, want, destName string, transfor
 	}
 	if id < 0 || id >= len(src) {
 		return fmt.Errorf("task %d not found in %s", id, srcName)
-	}
-	if want != "" && src[id].String() != want {
-		return ErrChanged
 	}
 	moved := src[id]
 	if transform != nil {

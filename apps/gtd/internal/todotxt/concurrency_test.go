@@ -67,7 +67,7 @@ func TestConcurrentTransferConserves(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			// Always target index 0; once empty, Transfer returns an error we ignore.
-			_ = s.Transfer(ActiveFile, 0, "", DoneFile, func(task Task) Task {
+			_ = s.Transfer(ActiveFile, 0, DoneFile, func(task Task) Task {
 				task.Done = true
 				return task
 			})

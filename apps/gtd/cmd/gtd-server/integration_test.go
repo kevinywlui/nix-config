@@ -181,28 +181,6 @@ func TestClarifyAllDestinations(t *testing.T) {
 	}
 }
 
-// TestStaleGuardRejectsWrongTask simulates a double-submit / second-device race:
-// a /done whose `want` no longer matches the task at that index must NOT
-// complete anything — it redirects to fresh state and leaves data intact.
-func TestStaleGuardRejectsWrongTask(t *testing.T) {
-	srv, store := newTestServer(t)
-	do(t, srv, "POST", "/capture", url.Values{"text": {"Real task"}})
-	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"home"}})
-
-	// Submit done for id 0 but with a stale `want` that doesn't match.
-	rec := do(t, srv, "POST", "/done", url.Values{
-		"id": {"0"}, "want": {"x 2026-01-01 some other task @home"}, "back": {"/next"},
-	})
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("stale done = %d, want 303 (benign refresh)", rec.Code)
-	}
-	active, _ := store.Read(todotxt.ActiveFile)
-	done, _ := store.Read(todotxt.DoneFile)
-	if len(active) != 1 || len(done) != 0 {
-		t.Fatalf("stale guard let the wrong task complete: active=%d done=%d", len(active), len(done))
-	}
-}
-
 func TestAPIBadInputs(t *testing.T) {
 	srv, _ := newTestServer(t)
 

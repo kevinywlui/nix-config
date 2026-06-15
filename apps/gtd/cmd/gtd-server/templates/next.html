@@ -14,7 +14,6 @@ priority; just engage.</p>
   <li>
     <form method="post" action="/done" class="doneform">
       <input type="hidden" name="id" value="{{.ID}}">
-      <input type="hidden" name="want" value="{{.Task.String}}">
       <input type="hidden" name="back" value="/next{{if $.Context}}?context={{$.Context}}{{end}}">
       <button type="submit" class="check" title="Mark done">✓</button>
     </form>
