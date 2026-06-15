@@ -1,0 +1,24 @@
+{{define "dashboard"}}{{template "head" .}}
+{{$c := .Counts}}
+<h1>Your system</h1>
+<p class="coach">GTD in five moves: <b>Capture</b> everything, <b>Clarify</b> what each
+thing means, <b>Organize</b> it where it belongs, <b>Reflect</b> in a weekly review,
+and <b>Engage</b> — just do the next thing. Start by emptying your head into Capture.</p>
+
+<div class="cards">
+  <a class="card {{if $c.Inbox}}hot{{end}}" href="/process">
+    <span class="num">{{$c.Inbox}}</span><span class="lbl">Inbox to process</span>
+  </a>
+  <a class="card" href="/next">
+    <span class="num">{{$c.Next}}</span><span class="lbl">Next actions</span>
+  </a>
+  <a class="card" href="/waiting">
+    <span class="num">{{$c.Waiting}}</span><span class="lbl">Waiting on others</span>
+  </a>
+  <a class="card {{if $c.Stalled}}warn{{end}}" href="/projects">
+    <span class="num">{{$c.Projects}}</span><span class="lbl">Projects{{if $c.Stalled}} · {{$c.Stalled}} stalled{{end}}</span>
+  </a>
+</div>
+
+<a class="bigbtn" href="/capture">＋ Capture something</a>
+{{template "foot" .}}{{end}}

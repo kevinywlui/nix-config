@@ -1,0 +1,13 @@
+{{define "contexts"}}{{template "head" .}}
+<h1>Contexts</h1>
+<p class="coach">A context is the tool, place, or person an action needs — <code>@calls</code>,
+<code>@computer</code>, <code>@errands</code>. When you're at your desk or out running
+errands, open that one list and the right actions are already grouped for you.</p>
+
+{{if not .Contexts}}<p class="empty">No contexts yet. Process your inbox to assign some.</p>{{end}}
+<ul class="chips">
+  {{range .Contexts}}
+  <li><a href="/next?context={{.Name}}">@{{.Name}} <span class="badge">{{.Count}}</span></a></li>
+  {{end}}
+</ul>
+{{template "foot" .}}{{end}}
