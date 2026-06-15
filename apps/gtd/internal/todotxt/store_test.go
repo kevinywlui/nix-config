@@ -1,6 +1,7 @@
 package todotxt
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,7 @@ func TestTransferIsAtomicMove(t *testing.T) {
 		}
 	}
 	// Move the middle task to done.txt, marking it done in the same step.
-	err = s.Transfer(ActiveFile, 1, DoneFile, func(task Task) Task {
+	err = s.Transfer(ActiveFile, 1, "", DoneFile, func(task Task) Task {
 		task.Done = true
 		task.Completed = "2026-06-15"
 		return task
@@ -37,8 +38,30 @@ func TestTransferIsAtomicMove(t *testing.T) {
 		t.Errorf("done after transfer = %v, want [done two]", done)
 	}
 
-	if err := s.Transfer(ActiveFile, 9, DoneFile, nil); err == nil {
+	if err := s.Transfer(ActiveFile, 9, "", DoneFile, nil); err == nil {
 		t.Error("Transfer with out-of-range id should error")
+	}
+}
+
+func TestTransferStaleGuard(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := New(dir)
+	for _, l := range []string{"alpha @a", "beta @b"} {
+		_ = s.Append(ActiveFile, l)
+	}
+	// want doesn't match the task at id 0 -> ErrChanged, nothing moves.
+	err := s.Transfer(ActiveFile, 0, "stale @x", DoneFile, nil)
+	if !errors.Is(err, ErrChanged) {
+		t.Fatalf("got %v, want ErrChanged", err)
+	}
+	active, _ := s.Read(ActiveFile)
+	done, _ := s.Read(DoneFile)
+	if len(active) != 2 || len(done) != 0 {
+		t.Fatalf("stale guard moved data: active=%d done=%d", len(active), len(done))
+	}
+	// Matching want -> succeeds.
+	if err := s.Transfer(ActiveFile, 0, "alpha @a", DoneFile, nil); err != nil {
+		t.Fatalf("matching want should succeed: %v", err)
 	}
 }
 

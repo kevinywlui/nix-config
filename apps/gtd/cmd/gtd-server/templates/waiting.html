@@ -9,6 +9,7 @@ own the follow-up. Scan this list in your weekly review and chase anyone who's g
   <li>
     <form method="post" action="/done" class="doneform">
       <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="want" value="{{.Task.String}}">
       <input type="hidden" name="back" value="/waiting">
       <button type="submit" class="check" title="Got it / resolved">✓</button>
     </form>

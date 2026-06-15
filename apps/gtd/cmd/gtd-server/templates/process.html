@@ -8,6 +8,7 @@ multi-step <b>project</b>? Decide once, here.</p>
 
 <form method="post" action="/process/do" class="clarify">
   <input type="hidden" name="id" value="{{.Item.ID}}">
+  <input type="hidden" name="want" value="{{.Item.Task.String}}">
 
   <fieldset>
     <legend>1 · Is it actionable?</legend>

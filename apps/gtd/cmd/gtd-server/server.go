@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -137,21 +138,33 @@ func safeBack(back string) string {
 	return back
 }
 
+// guard returns an error if the task at id doesn't match want (when want != "").
+// Caller runs it inside a store mutate closure, so the check is under the lock.
+func guard(ts []todotxt.Task, id int, want string) error {
+	if id < 0 || id >= len(ts) {
+		return fmt.Errorf("task %d not found", id)
+	}
+	if want != "" && ts[id].String() != want {
+		return todotxt.ErrChanged
+	}
+	return nil
+}
+
 // removeActive deletes the task at id from the active file.
-func (s *server) removeActive(id int) error {
+func (s *server) removeActive(id int, want string) error {
 	return s.store.Mutate(todotxt.ActiveFile, func(ts []todotxt.Task) ([]todotxt.Task, error) {
-		if id < 0 || id >= len(ts) {
-			return nil, fmt.Errorf("task %d not found", id)
+		if err := guard(ts, id, want); err != nil {
+			return nil, err
 		}
 		return append(ts[:id:id], ts[id+1:]...), nil
 	})
 }
 
 // replaceActive applies fn to the task at id in place.
-func (s *server) replaceActive(id int, fn func(*todotxt.Task)) error {
+func (s *server) replaceActive(id int, want string, fn func(*todotxt.Task)) error {
 	return s.store.Mutate(todotxt.ActiveFile, func(ts []todotxt.Task) ([]todotxt.Task, error) {
-		if id < 0 || id >= len(ts) {
-			return nil, fmt.Errorf("task %d not found", id)
+		if err := guard(ts, id, want); err != nil {
+			return nil, err
 		}
 		t := ts[id]
 		fn(&t)
@@ -161,8 +174,8 @@ func (s *server) replaceActive(id int, fn func(*todotxt.Task)) error {
 }
 
 // completeActive marks the task at id done and moves it to done.txt atomically.
-func (s *server) completeActive(id int) error {
-	return s.store.Transfer(todotxt.ActiveFile, id, todotxt.DoneFile, markDone)
+func (s *server) completeActive(id int, want string) error {
+	return s.store.Transfer(todotxt.ActiveFile, id, want, todotxt.DoneFile, markDone)
 }
 
 // --- HTML handlers ----------------------------------------------------------
@@ -263,30 +276,31 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f := func(k string) string { return strings.TrimSpace(r.FormValue(k)) }
+	want := r.FormValue("want")
 
 	switch f("decision") {
 	case "trash":
-		err = s.removeActive(id)
+		err = s.removeActive(id, want)
 	case "reference":
-		err = s.moveOut(id, todotxt.ReferenceFile)
+		err = s.moveOut(id, want, todotxt.ReferenceFile)
 	case "someday":
-		err = s.moveOut(id, todotxt.SomedayFile)
+		err = s.moveOut(id, want, todotxt.SomedayFile)
 	case "donow":
-		err = s.completeActive(id)
+		err = s.completeActive(id, want)
 	case "next":
 		ctx := f("context")
 		if ctx == "" {
 			http.Error(w, "a context is required for a next action", 400)
 			return
 		}
-		err = s.replaceActive(id, func(t *todotxt.Task) {
+		err = s.replaceActive(id, want, func(t *todotxt.Task) {
 			t.RemoveContext(gtd.ContextInbox)
 			t.AddContext(ctx)
 			t.SetTag("due", f("due"))
 			t.SetTag("t", f("threshold"))
 		})
 	case "waiting":
-		err = s.replaceActive(id, func(t *todotxt.Task) {
+		err = s.replaceActive(id, want, func(t *todotxt.Task) {
 			t.RemoveContext(gtd.ContextInbox)
 			t.AddContext(gtd.ContextWaiting)
 			t.SetTag("for", f("person"))
@@ -299,8 +313,8 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.store.Mutate(todotxt.ActiveFile, func(ts []todotxt.Task) ([]todotxt.Task, error) {
-			if id < 0 || id >= len(ts) {
-				return nil, fmt.Errorf("task %d not found", id)
+			if gErr := guard(ts, id, want); gErr != nil {
+				return nil, gErr
 			}
 			ts = append(ts[:id:id], ts[id+1:]...)
 			na, _ := todotxt.Parse(naText)
@@ -313,6 +327,12 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown decision", 400)
 		return
 	}
+	// A stale index (double-submit, second device) means the inbox already
+	// moved on — just show the fresh state rather than acting on the wrong task.
+	if errors.Is(err, todotxt.ErrChanged) {
+		http.Redirect(w, r, "/process", http.StatusSeeOther)
+		return
+	}
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -322,8 +342,8 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 
 // moveOut strips the inbox marker and relocates the task to another file
 // atomically (single lock acquisition in the store).
-func (s *server) moveOut(id int, dest string) error {
-	return s.store.Transfer(todotxt.ActiveFile, id, dest, stripInbox)
+func (s *server) moveOut(id int, want, dest string) error {
+	return s.store.Transfer(todotxt.ActiveFile, id, want, dest, stripInbox)
 }
 
 func (s *server) handleNext(w http.ResponseWriter, r *http.Request) {
@@ -380,7 +400,9 @@ func (s *server) handleDone(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", 400)
 		return
 	}
-	if err := s.completeActive(id); err != nil {
+	// ErrChanged (stale index) is benign: the list already moved on, so just
+	// redirect to the fresh view instead of completing the wrong task.
+	if err := s.completeActive(id, r.FormValue("want")); err != nil && !errors.Is(err, todotxt.ErrChanged) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -478,7 +500,7 @@ func (s *server) apiDone(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad body", 400)
 		return
 	}
-	if err := s.completeActive(body.ID); err != nil {
+	if err := s.completeActive(body.ID, ""); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
