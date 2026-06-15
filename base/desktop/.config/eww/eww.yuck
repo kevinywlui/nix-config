@@ -19,6 +19,13 @@
   :initial '{"text":"... --%","class":"battery ok"}'
   `~/.local/bin/eww-battery.sh`)
 
+; Sun times shift by seconds/day, so a slow poll is plenty — 30min still catches
+; the local-midnight rollover to the next day's rise/set and refreshes the
+; "next event" countdown often enough for a tooltip.
+(defpoll sun :interval "1800s"
+  :initial '{"tooltip":"sun: ..."}'
+  `~/.local/bin/eww-sun.sh`)
+
 (defpoll audio :interval "2s"
   :initial '{"profile":"...","vol_icon":"󰕾","vol_pct":"--%","vol_muted":false,"mic_icon":"󰍬","mic_pct":"--%","mic_muted":false}'
   `~/.local/bin/eww-audio.sh`)
@@ -84,7 +91,9 @@
   (label :class {battery.class} :tooltip {battery.tooltip} :text {battery.text}))
 
 (defwidget clock-widget []
-  (label :class "clock" :text datetime))
+  ; Tooltip surfaces today's sunrise/sunset + countdown to the next crossing
+  ; (cf. battery-widget: an informational tooltip on a bare label, no bindings).
+  (label :class "clock" :tooltip {sun.tooltip} :text datetime))
 
 (defwidget bar-left [monitor]
   (box :orientation "h" :space-evenly false :halign "start"
