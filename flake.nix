@@ -85,5 +85,19 @@
       };
 
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixpkgs-fmt;
+
+      # `nix run .#tool-report [-- --min-ephemeral 1 ...]` — on-demand run of the
+      # read-only CLI-tool usage audit (also wired as a weekly user-timer in
+      # nix/modules/home/profiles/core.nix). dotfilesPath is a literal string,
+      # so this interpolates the live script path rather than importing it.
+      apps.x86_64-linux.tool-report =
+        let pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        in {
+          type = "app";
+          program = "${pkgs.writeShellScript "tool-report" ''
+            exec ${pkgs.python3}/bin/python3 \
+              ${dotfilesPath}/nix/scripts/tool-usage-report.py "$@"
+          ''}";
+        };
     };
 }

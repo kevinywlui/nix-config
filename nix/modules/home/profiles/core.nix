@@ -80,5 +80,35 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
+  # Weekly read-only audit of which CLI tools to declare vs drop. Writes a
+  # markdown report (INSTALL candidates from ad-hoc nix-shell pulls, REMOVE
+  # candidates from declared-but-unused tools) to ~/.local/state; never edits
+  # anything. The script lives in the live tree, so it tracks edits without a
+  # rebuild — run it on demand with `nix run .#tool-report`. dotfilesPath is a
+  # literal string here, so this interpolates a path, not a store import.
+  systemd.user.services.tool-usage-report = {
+    Unit.Description = "Generate CLI tool usage report (install/remove candidates)";
+    Service = {
+      Type = "oneshot";
+      ExecStart = pkgs.writeShellScript "tool-usage-report" ''
+        set -euo pipefail
+        ${pkgs.coreutils}/bin/mkdir -p "$HOME/.local/state"
+        ${pkgs.python3}/bin/python3 \
+          ${dotfilesPath}/nix/scripts/tool-usage-report.py \
+          > "$HOME/.local/state/tool-usage-report.md"
+      '';
+    };
+  };
+
+  systemd.user.timers.tool-usage-report = {
+    Unit.Description = "Weekly CLI tool usage report";
+    Timer = {
+      OnCalendar = "weekly";
+      # Laptops are often off at the scheduled time; catch up on next boot.
+      Persistent = true;
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
   home.stateVersion = "24.11";
 }
