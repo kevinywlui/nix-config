@@ -2,7 +2,7 @@
 dev=$(upower -e 2>/dev/null | grep -i battery | head -1)
 
 if [ -z "$dev" ]; then
-	echo '{"text":"? --%","class":"battery unknown","tooltip":"No battery detected"}'
+	echo '{"text":"󰂑 --%","class":"battery unknown","tooltip":"No battery detected"}'
 	exit 0
 fi
 
@@ -47,31 +47,63 @@ fmt_time() {
 	fi
 }
 
+# --- Nerd Font (Material Design) battery glyphs ---
+# All confirmed present in MesloLGS Nerd Font. The discharge ramp is a 10-step
+# set indexed by pct/10; charging/full/alert/unknown get dedicated glyphs.
+# Codepoints in $'\U........' 8-hex-digit form (bash needs the full width for
+# the >U+FFFF MDI range).
+ramp=($'\U000f008e' $'\U000f007a' $'\U000f007b' $'\U000f007c' $'\U000f007d' \
+	$'\U000f007e' $'\U000f007f' $'\U000f0080' $'\U000f0081' $'\U000f0082')
+g_full=$'\U000f0079'     # battery (full)
+g_alert=$'\U000f0083'    # battery-alert (critical)
+g_chg=$'\U000f0084'      # battery-charging
+g_chg_full=$'\U000f0085' # battery-charging-100 (full on AC)
+g_unknown=$'\U000f0091'  # battery-unknown
+
+ramp_glyph() { # arg: pct -> discharge level glyph
+	local p=${1:-0}
+	if [ "$p" -ge 100 ]; then
+		printf '%s' "$g_full"
+	else
+		local idx=$((p / 10))
+		[ "$idx" -gt 9 ] && idx=9
+		printf '%s' "${ramp[$idx]}"
+	fi
+}
+
 case "$state" in
 charging)
 	time_str=$(fmt_time "$t_full_val" "$t_full_unit")
-	icon="⚡"
-	class="battery charging"
+	icon="$g_chg"
+	# Plugged in but still nearly empty: keep the low charge visible (yellow)
+	# instead of letting "charging green" mask a critical level.
+	if [ "${pct:-100}" -lt 20 ]; then
+		class="battery low-charging"
+	else
+		class="battery charging"
+	fi
 	;;
 fully-charged)
 	time_str=""
-	icon=""
-	class="battery ok"
+	icon="$g_chg_full"
+	class="battery charging"
 	;;
 discharging)
 	time_str=$(fmt_time "$t_empty_val" "$t_empty_unit")
-	icon=""
 	if [ "${pct:-100}" -lt 15 ]; then
+		icon="$g_alert"
 		class="battery critical"
 	elif [ "${pct:-100}" -lt 30 ]; then
+		icon=$(ramp_glyph "${pct:-0}")
 		class="battery warning"
 	else
+		icon=$(ramp_glyph "${pct:-0}")
 		class="battery ok"
 	fi
 	;;
 *)
 	time_str=""
-	icon="?"
+	icon="$g_unknown"
 	class="battery unknown"
 	;;
 esac

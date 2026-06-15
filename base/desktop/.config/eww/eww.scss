@@ -125,23 +125,52 @@ window#clock {
   color: #a89984;
 }
 
-.battery,
 .clock {
   padding: 0 12px;
   color: #dddddd;
   min-height: 32px;
 }
 
+// ---- Battery ----
+//
+// Battery is a READOUT, not a control: a flat foreground label in every state
+// except critical, which promotes to a nightlight-style pill (see below). The
+// healthy default sits at recessive gruvbox gray so it fades into the bar — it
+// only gets louder as the charge drops. The glyph (Material Design ramp, set in
+// eww-battery.sh) redundantly encodes level as *shape*, so state never depends
+// on color alone (colorblind-safe).
+
+.battery {
+  padding: 0 12px;
+  color: #928374;   // gruvbox gray — quiet when healthy
+  min-height: 32px;
+}
+
 .battery.charging {
-  color: #689d68;
+  color: #689d68;   // gruvbox green — affirmative, charging / full on AC
 }
 
 .battery.warning {
-  color: #d79921;
+  color: #d79921;   // gruvbox yellow — heads-up (<30%)
 }
 
+// Plugged in but still <20%: yellow keeps the low charge visible rather than
+// letting "charging green" hide that it's nearly empty.
+.battery.low-charging {
+  color: #d79921;   // gruvbox yellow
+}
+
+.battery.unknown {
+  color: #928374;   // gruvbox gray — "no data" reads as quiet, not normal
+}
+
+// Critical (<15%): the one state that shouts. Promotes to a filled pill
+// matching .nightlight-on's "stop everything" grammar. This also fixes a
+// contrast bug — red text (#cc241d) on the #282828 bar is only 3.0:1 (fails
+// WCAG AA); cream-on-red is 4.9:1 and the fill itself is a luminance signal.
 .battery.critical {
-  color: #cc241d;
+  background-color: #cc241d;   // gruvbox bright red, same as .nightlight-on
+  color: #fbf1c7;               // gruvbox cream
 }
 
 // ---- Background clock ----
