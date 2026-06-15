@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -22,10 +23,7 @@ var templateFS embed.FS
 //go:embed static/*
 var staticFS embed.FS
 
-// now is overridable in tests; today() formats it as an ISO date.
-var now = time.Now
-
-func today() string { return now().Format("2006-01-02") }
+func today() string { return time.Now().Format("2006-01-02") }
 
 type server struct {
 	store *todotxt.Store
@@ -89,23 +87,12 @@ func (s *server) csrfOK(r *http.Request) bool {
 	if r.Header.Get("X-GTD-Client") != "" {
 		return true
 	}
-	host := r.Host
 	for _, h := range []string{r.Header.Get("Origin"), r.Header.Get("Referer")} {
-		if h == "" {
-			continue
-		}
-		if u := stripScheme(h); u == host || strings.HasPrefix(u, host+"/") {
+		if u, err := url.Parse(h); err == nil && u.Host == r.Host {
 			return true
 		}
 	}
 	return false
-}
-
-func stripScheme(u string) string {
-	if i := strings.Index(u, "://"); i >= 0 {
-		return u[i+3:]
-	}
-	return u
 }
 
 func markDone(t todotxt.Task) todotxt.Task {
