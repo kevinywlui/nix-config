@@ -1,0 +1,17 @@
+{{define "projects"}}{{template "head" .}}
+<h1>Projects</h1>
+<p class="coach">Any outcome that needs more than one step is a project. The key GTD
+check: <b>every active project must have a next action</b>, or it silently stalls.
+Stalled projects are flagged below — give each one a next action in Process or Capture.</p>
+
+{{if not .Projects}}<p class="empty">No projects yet.</p>{{end}}
+<ul class="projects">
+  {{range .Projects}}
+  <li class="{{if eq .Actions 0}}stalled{{end}}">
+    <a href="/next?context=">+{{.Name}}</a>
+    {{if eq .Actions 0}}<span class="badge warn">stalled — no next action</span>
+    {{else}}<span class="badge">{{.Actions}} next action{{if ne .Actions 1}}s{{end}}</span>{{end}}
+  </li>
+  {{end}}
+</ul>
+{{template "foot" .}}{{end}}

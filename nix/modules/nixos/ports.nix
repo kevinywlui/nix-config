@@ -14,5 +14,10 @@
       default = 8088;
       description = "Static status page web server";
     };
+    gtd = lib.mkOption {
+      type = lib.types.port;
+      default = 8730;
+      description = "Guided-GTD web server (todo.txt); fronted by tailscale serve";
+    };
   };
 }

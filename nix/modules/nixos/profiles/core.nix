@@ -126,6 +126,7 @@ in
         fd
         fzf
         gh
+        gtd
         jj
         jq
         nushell

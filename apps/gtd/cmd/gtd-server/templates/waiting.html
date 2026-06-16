@@ -1,0 +1,23 @@
+{{define "waiting"}}{{template "head" .}}
+<h1>Waiting on others</h1>
+<p class="coach">Things you've delegated or are blocked on. You can't act on these — but you
+own the follow-up. Scan this list in your weekly review and chase anyone who's gone quiet.</p>
+
+{{if not .Items}}<p class="empty">Nobody's holding anything for you right now.</p>{{end}}
+<ul class="tasks">
+  {{range .Items}}
+  <li>
+    <form method="post" action="/done" class="doneform">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="back" value="/waiting">
+      <button type="submit" class="check" title="Got it / resolved">✓</button>
+    </form>
+    <div class="body">
+      <span class="txt">{{.Task.Text}}</span>
+      {{if .Task.Tag "for"}}<span class="who">for {{.Task.Tag "for"}}</span>{{end}}
+      {{if .Task.Tag "t"}}<span class="due">follow up {{.Task.Tag "t"}}</span>{{end}}
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{template "foot" .}}{{end}}

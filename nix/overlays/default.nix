@@ -17,4 +17,4 @@ inputs: final: prev: {
     system = final.stdenv.hostPlatform.system;
     config.allowUnfree = true;
   };
-}
+} // (import ./gtd.nix inputs final prev)

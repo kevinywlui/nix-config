@@ -1,0 +1,27 @@
+{{define "next"}}{{template "head" .}}
+<h1>Next actions{{if .Context}} <span class="badge">@{{.Context}}</span>{{end}}</h1>
+<p class="coach">These are concrete, do-able actions. Pick by context — what can you
+actually do <i>right now</i>, given where you are and what you've got? Don't overthink
+priority; just engage.</p>
+
+{{if not .Items}}
+  <p class="empty">Nothing here. {{if .Context}}<a href="/next">See all contexts</a>.{{else}}
+  <a href="/process">Process your inbox</a> to create some.{{end}}</p>
+{{end}}
+
+<ul class="tasks">
+  {{range .Items}}
+  <li>
+    <form method="post" action="/done" class="doneform">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="back" value="/next{{if $.Context}}?context={{$.Context}}{{end}}">
+      <button type="submit" class="check" title="Mark done">✓</button>
+    </form>
+    <div class="body">
+      <span class="txt">{{.Task.Text}}</span>
+      {{if .Task.Tag "due"}}<span class="due">due {{.Task.Tag "due"}}</span>{{end}}
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{template "foot" .}}{{end}}

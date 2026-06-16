@@ -1,0 +1,33 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1117">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="stylesheet" href="/static/style.css">
+<title>GTD</title>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">GTD</a>
+  <nav>
+    <a href="/capture">Capture</a>
+    <a href="/process">Process</a>
+    <a href="/next">Next</a>
+    <a href="/projects">Projects</a>
+  </nav>
+</header>
+<main>{{end}}
+
+{{define "foot"}}</main>
+<nav class="tabbar">
+  <a href="/capture">＋<span>Capture</span></a>
+  <a href="/process">⇄<span>Process</span></a>
+  <a href="/next">▸<span>Next</span></a>
+  <a href="/contexts">@<span>Contexts</span></a>
+  <a href="/waiting">⏳<span>Waiting</span></a>
+</nav>
+<script src="/static/app.js"></script>
+</body>
+</html>{{end}}

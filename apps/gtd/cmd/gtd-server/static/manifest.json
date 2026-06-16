@@ -1,0 +1,9 @@
+{
+  "name": "GTD",
+  "short_name": "GTD",
+  "description": "Guided Getting Things Done over todo.txt",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117"
+}

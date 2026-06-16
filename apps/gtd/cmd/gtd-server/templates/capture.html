@@ -1,0 +1,16 @@
+{{define "capture"}}{{template "head" .}}
+<h1>Capture</h1>
+<p class="coach">Get it out of your head — don't organize yet. Type whatever's nagging
+you and hit Capture. It lands in your Inbox; you'll decide what it means later in
+Process. One thought per capture.</p>
+
+{{if .Saved}}<p class="flash">Captured. What else is on your mind?</p>{{end}}
+
+<form method="post" action="/capture" class="capture">
+  <input type="text" name="text" placeholder="e.g. Call the dentist about that filling"
+         autofocus autocomplete="off" required>
+  <button type="submit">Capture</button>
+</form>
+<p class="hint">Tip: you can type raw todo.txt if you like — <code>@context</code>,
+<code>+project</code>, <code>due:2026-06-20</code> — but you don't have to.</p>
+{{template "foot" .}}{{end}}

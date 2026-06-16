@@ -21,6 +21,7 @@ in
     ../../modules/nixos/profiles/laptop-hardware.nix
     ../../modules/nixos/services/paperless.nix
     ../../modules/nixos/services/status-page.nix
+    ../../modules/nixos/services/gtd
     ./hardware.nix
   ];
 
@@ -46,8 +47,14 @@ in
     enable = true;
     monitoredServices = [
       { name = "Paperless"; unit = "paperless-web.service"; }
+      { name = "GTD"; unit = "gtd.service"; }
     ];
   };
+
+  # Guided GTD over todo.txt: web UI + JSON API, reachable from the phone and
+  # fw13 over the tailnet (tailscale serve fronts it with HTTPS). Data lives in
+  # /var/lib/gtd on this host only — single canonical copy, no syncthing.
+  services.gtd.enable = true;
   # Prevent suspend when lid is closed; t480 runs headless
   services.logind.settings.Login.HandleLidSwitch = "ignore";
 
