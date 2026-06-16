@@ -38,14 +38,23 @@ written by other todo.txt tools round-trip untouched.
 ## Files in the data directory
 
 `todo.txt` (active), `done.txt` (completed archive), `someday.txt`,
-`reference.txt`, and `backups/` (last 50 pre-write snapshots per file).
+`reference.txt`, `notes/` (free-form per-item notes, one file per `note:<key>`
+tag), and `backups/` (last 50 pre-write snapshots per file).
 
 ## HTTP surface
 
 Web (same-origin, browser): `/`, `/capture`, `/process`, `/next`, `/contexts`,
-`/waiting`, `/projects`. JSON (CLI): `GET /api/tasks?view=next|inbox|waiting|all&context=`,
-`POST /api/capture`, `POST /api/done`. All mutating requests must be same-origin
-or carry the `X-GTD-Client` header (CSRF defense); the CLI sets it automatically.
+`/waiting`, `/projects`, `/done` (completed; POST also completes a task),
+`/restore`, `/edit`, `/undo`, `/raw`, `/help`. JSON (CLI):
+`GET /api/tasks?view=next|inbox|waiting|done|all&context=`, `POST /api/capture`,
+`POST /api/done`, `POST /api/edit`, `POST /api/restore`, `POST /api/undo`. All
+mutating requests must be same-origin or carry the `X-GTD-Client` header (CSRF
+defense); the CLI sets it automatically.
+
+Mutations keep a single-level, whole-store **undo** point (a snapshot of every
+file taken before each write); `POST /undo` restores it. Notes live in their own
+files so they may be multi-line; only the short `note:<key>` pointer sits on the
+todo.txt line, and it's hidden from the displayed text.
 
 ## Develop
 

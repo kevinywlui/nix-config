@@ -97,6 +97,15 @@ func (t Task) String() string {
 // fields returns the whitespace-split description tokens.
 func (t Task) fields() []string { return strings.Fields(t.Text) }
 
+// DisplayText is the description with the internal note: pointer tag removed, so
+// the long note key isn't shown to the user. The note's presence is surfaced
+// separately (e.g. a 📝 indicator), not as raw text.
+func (t Task) DisplayText() string {
+	c := t
+	c.SetTag("note", "")
+	return c.Text
+}
+
 // Contexts returns the @context tokens (without the leading @), in order.
 func (t Task) Contexts() []string {
 	var out []string

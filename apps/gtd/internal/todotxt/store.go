@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -18,7 +19,13 @@ const (
 	SomedayFile   = "someday.txt"
 	ReferenceFile = "reference.txt"
 	backupDir     = "backups"
+	notesDir      = "notes"
 )
+
+// noteKeyRe constrains a note key to a filename-safe shape, so a key read from
+// a (user-editable) task tag can't escape the notes directory via path
+// traversal.
+var noteKeyRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // managedFiles are the files Undo snapshots and restores as one set, so a single
 // undo rolls back a mutation that touched more than one file (e.g. a Transfer
@@ -62,7 +69,63 @@ func New(dir string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(dir, backupDir), 0o750); err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(filepath.Join(dir, notesDir), 0o750); err != nil {
+		return nil, err
+	}
 	return &Store{dir: dir}, nil
+}
+
+// ReadNote returns the free-form note text attached under key (the value of a
+// task's note: tag), or "" if there is none.
+func (s *Store) ReadNote(key string) (string, error) {
+	if !noteKeyRe.MatchString(key) {
+		return "", fmt.Errorf("invalid note key %q", key)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := os.ReadFile(filepath.Join(s.dir, notesDir, key+".txt"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
+// WriteNote stores free-form note text under key, replacing any existing note.
+// Empty content deletes the note. Notes live in their own files (not the
+// todo.txt line), so they may contain newlines freely.
+func (s *Store) WriteNote(key, content string) error {
+	if !noteKeyRe.MatchString(key) {
+		return fmt.Errorf("invalid note key %q", key)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	path := filepath.Join(s.dir, notesDir, key+".txt")
+	if content == "" {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	tmp, err := os.CreateTemp(filepath.Join(s.dir, notesDir), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o640); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // Read loads and parses the named file. A missing file is treated as empty.

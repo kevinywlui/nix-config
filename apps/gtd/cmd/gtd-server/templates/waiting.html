@@ -13,7 +13,7 @@ own the follow-up. Scan this list in your weekly review and chase anyone who's g
       <button type="submit" class="check" title="Got it / resolved">✓</button>
     </form>
     <div class="body">
-      <span class="txt">{{.Task.Text}}</span>
+      <span class="txt">{{.Task.DisplayText}}{{if .Task.Tag "note"}} <span class="noteflag" title="Has notes">📝</span>{{end}}</span>
       {{if .Task.Tag "for"}}<span class="who">for {{.Task.Tag "for"}}</span>{{end}}
       {{if .Task.Tag "t"}}<span class="due">follow up {{.Task.Tag "t"}}</span>{{end}}
     </div>

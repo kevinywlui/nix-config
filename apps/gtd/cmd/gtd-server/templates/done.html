@@ -1,0 +1,22 @@
+{{define "done"}}{{template "head" .}}
+<h1>Done</h1>
+<p class="coach">Completed actions, newest first. Finished it for real — nice. Knocked
+something off by mistake, or need it back? <b>Restore</b> it: the task returns to your
+active lists (or to your inbox if it has no context left to land on).</p>
+
+{{if not .Items}}<p class="empty">Nothing completed yet. Go <a href="/next">do something</a>.</p>{{end}}
+<ul class="tasks">
+  {{range .Items}}
+  <li>
+    <form method="post" action="/restore" class="doneform">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <button type="submit" class="check restore" title="Bring it back">↩</button>
+    </form>
+    <div class="body">
+      <span class="txt done">{{.Task.DisplayText}}{{if .Task.Tag "note"}} <span class="noteflag" title="Has notes">📝</span>{{end}}</span>
+      {{if .Task.Completed}}<span class="who">done {{.Task.Completed}}</span>{{end}}
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{template "foot" .}}{{end}}

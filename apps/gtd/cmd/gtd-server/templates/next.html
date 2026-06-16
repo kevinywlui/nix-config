@@ -18,7 +18,7 @@ priority; just engage.</p>
       <button type="submit" class="check" title="Mark done">✓</button>
     </form>
     <div class="body">
-      <span class="txt">{{.Task.Text}}</span>
+      <span class="txt">{{.Task.DisplayText}}{{if .Task.Tag "note"}} <span class="noteflag" title="Has notes">📝</span>{{end}}</span>
       {{if .Task.Tag "due"}}<span class="due">due {{.Task.Tag "due"}}</span>{{end}}
     </div>
     <a class="edit" href="/edit?id={{.ID}}&amp;back=/next{{if $.Context}}?context={{$.Context}}{{end}}" title="Edit">✎</a>

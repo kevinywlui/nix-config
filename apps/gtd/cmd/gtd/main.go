@@ -65,6 +65,14 @@ func main() {
 		err = edit(args[0], strings.Join(args[1:], " "))
 	case "undo":
 		err = undo()
+	case "log", "done-list":
+		err = list("done", "")
+	case "restore":
+		if len(args) != 1 {
+			err = fmt.Errorf("usage: gtd restore <id>")
+			break
+		}
+		err = restore(args[0])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -89,6 +97,8 @@ usage:
   gtd done <id>         complete the task with that id
   gtd edit <id> <text>  replace the wording of the task with that id
   gtd undo              roll back the last change
+  gtd log               list completed tasks
+  gtd restore <id>      bring a completed task back to your active list
 
 GTD_ENDPOINT selects the server (default http://127.0.0.1:8730).
 `)
@@ -205,6 +215,24 @@ func undo() error {
 		return httpErr(resp)
 	}
 	fmt.Println("undone.")
+	return nil
+}
+
+func restore(idStr string) error {
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return fmt.Errorf("id must be a number")
+	}
+	payload, _ := json.Marshal(map[string]int{"id": id})
+	resp, err := request(http.MethodPost, "/api/restore", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return httpErr(resp)
+	}
+	fmt.Println("restored.")
 	return nil
 }
 

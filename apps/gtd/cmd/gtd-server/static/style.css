@@ -92,6 +92,8 @@ button:active { transform: translateY(1px); }
   border-bottom: 1px solid #313244; }
 .check { background: transparent; border: 2px solid var(--muted); color: var(--ok);
   width: 2.2rem; height: 2.2rem; border-radius: 50%; padding: 0; flex: none; }
+.check.restore { color: var(--accent); }
+.txt.done { color: var(--muted); text-decoration: line-through; }
 .doneform { margin: 0; }
 .tasks .body { display: flex; flex-direction: column; gap: .2rem; flex: 1; }
 .tasks .txt { font-size: 1rem; }
@@ -104,10 +106,22 @@ button:active { transform: translateY(1px); }
 .item { position: relative; }
 .item .edit { position: absolute; top: .5rem; right: .5rem; }
 
+.noteflag { font-size: .85em; }
+
 /* Cancel link styled like a secondary button */
 .btnlink { display: inline-flex; align-items: center; padding: .7rem 1.1rem;
   border-radius: var(--radius); background: var(--panel); color: var(--sub); font-weight: 600; }
 .capture .row { display: flex; gap: .5rem; align-items: center; }
+
+/* Edit form */
+.editform label { display: block; font-size: .85rem; color: var(--sub); margin-bottom: .6rem; }
+.editform label.lead { font-size: .95rem; color: var(--fg); margin: 1rem 0 .4rem; }
+.editform .subfields { background: var(--panel2); border-radius: var(--radius); padding: .9rem; }
+.editform .row { display: flex; gap: .6rem; align-items: flex-end; }
+.editform .subfields .row label { flex: 1; }
+.editform textarea { width: 100%; font-size: 1rem; padding: .7rem .8rem; resize: vertical;
+  background: var(--panel); color: var(--fg); border: 1px solid #313244; border-radius: var(--radius);
+  font-family: inherit; line-height: 1.5; }
 
 /* Undo bar (above the bottom tab bar) */
 .undobar { position: fixed; left: 0; right: 0; bottom: 3.4rem; margin: 0;
@@ -132,6 +146,18 @@ button:active { transform: translateY(1px); }
 pre.raw { background: var(--panel2); color: var(--fg); padding: 1rem;
   border-radius: var(--radius); overflow-x: auto; font-size: .82rem; line-height: 1.6;
   white-space: pre-wrap; word-break: break-word; }
+
+/* Help screen */
+.help h2 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; color: var(--accent); }
+.help p { margin-bottom: .7rem; color: var(--sub); }
+.help p b, .help li b { color: var(--fg); }
+.help ul { margin: 0 0 .9rem 1.1rem; }
+.help li { margin-bottom: .45rem; color: var(--sub); }
+.help .badge { vertical-align: middle; }
+.maptable { width: 100%; border-collapse: collapse; margin: .4rem 0 .9rem; font-size: .9rem; }
+.maptable td { padding: .4rem .6rem; border-bottom: 1px solid #313244; vertical-align: top; }
+.maptable td:first-child { white-space: nowrap; color: var(--fg); }
+.maptable td:last-child { color: var(--sub); }
 
 /* Bottom tab bar (mobile) */
 .tabbar { position: fixed; bottom: 0; left: 0; right: 0;

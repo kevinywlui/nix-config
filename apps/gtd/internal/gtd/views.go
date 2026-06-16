@@ -56,6 +56,12 @@ func IsInbox(t todotxt.Task) bool { return t.HasContext(ContextInbox) }
 // IsWaiting reports a delegated / awaiting item.
 func IsWaiting(t todotxt.Task) bool { return t.HasContext(ContextWaiting) }
 
+// HasRealContext reports whether the task carries at least one non-reserved
+// @context — the contexts a next action can live on. Used when restoring a
+// completed task to decide whether it can rejoin the next-actions lists or
+// should fall back to the inbox.
+func HasRealContext(t todotxt.Task) bool { return len(realContexts(t)) > 0 }
+
 // realContexts returns the task's contexts excluding the reserved ones.
 func realContexts(t todotxt.Task) []string {
 	var out []string

@@ -41,7 +41,7 @@ func do(t *testing.T, srv *server, method, target string, vals url.Values) *http
 
 func TestPagesRender(t *testing.T) {
 	srv, _ := newTestServer(t)
-	for _, p := range []string{"/", "/capture", "/process", "/next", "/contexts", "/waiting", "/projects"} {
+	for _, p := range []string{"/", "/capture", "/process", "/next", "/contexts", "/waiting", "/projects", "/done", "/help"} {
 		if rec := do(t, srv, "GET", p, nil); rec.Code != 200 {
 			t.Errorf("GET %s = %d, want 200; body=%s", p, rec.Code, rec.Body.String())
 		}
@@ -108,7 +108,7 @@ func TestClarifyValidation(t *testing.T) {
 
 func TestMutatingEndpointsRejectGET(t *testing.T) {
 	srv, _ := newTestServer(t)
-	for _, p := range []string{"/process/do", "/done", "/undo"} {
+	for _, p := range []string{"/process/do", "/undo", "/restore"} {
 		if rec := do(t, srv, "GET", p, nil); rec.Code != http.StatusMethodNotAllowed {
 			t.Errorf("GET %s = %d, want 405", p, rec.Code)
 		}
@@ -213,6 +213,76 @@ func TestEditFlow(t *testing.T) {
 	}
 }
 
+// The edit form offers the Clarify controls: a name in "waiting on" marks the
+// item @waiting with a for: tag, and the date fields set due:/t:.
+func TestEditStructuredFields(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"ask Bob about the report"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"calls"}})
+
+	if rec := do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"ask Bob about the report @calls"},
+		"person": {"bob"}, "due": {"2026-07-01"}, "back": {"/next"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("edit = %d, want 303", rec.Code)
+	}
+	active, _ := store.Read(todotxt.ActiveFile)
+	got := active[0]
+	if !got.HasContext("waiting") || got.Tag("for") != "bob" {
+		t.Errorf("waiting-on not applied: %q", got.Text)
+	}
+	if got.Tag("due") != "2026-07-01" {
+		t.Errorf("due not applied: %q", got.Text)
+	}
+}
+
+// Notes are attached via a note: pointer tag and stored in their own file; the
+// long key never shows up in the displayed text, only a 📝 indicator.
+func TestEditNotes(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"plan the trip"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"computer"}})
+
+	note := "Flights: see link\nHotel: the one near the park"
+	do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"plan the trip @computer"}, "notes": {note}, "back": {"/next"},
+	})
+
+	active, _ := store.Read(todotxt.ActiveFile)
+	key := active[0].Tag("note")
+	if key == "" {
+		t.Fatal("note tag was not attached to the task")
+	}
+	stored, _ := store.ReadNote(key)
+	if stored != note {
+		t.Errorf("note content = %q, want %q", stored, note)
+	}
+	// The next list shows the 📝 flag but never the raw note key.
+	b := do(t, srv, "GET", "/next", nil).Body.String()
+	if !strings.Contains(b, "📝") {
+		t.Error("next list should show a note indicator")
+	}
+	if strings.Contains(b, "note:"+key) {
+		t.Error("raw note key leaked into the rendered list")
+	}
+	// Re-editing prefills the note so it isn't lost.
+	if e := do(t, srv, "GET", "/edit?id=0&back=/next", nil).Body.String(); !strings.Contains(e, "near the park") {
+		t.Error("edit form should prefill the existing note")
+	}
+
+	// Clearing the notes field removes the tag and the file.
+	do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"plan the trip @computer"}, "notes": {""}, "back": {"/next"},
+	})
+	active, _ = store.Read(todotxt.ActiveFile)
+	if active[0].Tag("note") != "" {
+		t.Error("emptying notes should drop the note: tag")
+	}
+	if got, _ := store.ReadNote(key); got != "" {
+		t.Error("emptying notes should delete the note file")
+	}
+}
+
 // A newline in the edited text must be collapsed, never written through as a
 // second line that would forge an extra task in the file.
 func TestEditRejectsLineInjection(t *testing.T) {
@@ -299,6 +369,61 @@ func TestUndoRestoresCompletedTask(t *testing.T) {
 	}
 	if len(done) != 0 {
 		t.Errorf("undo of done: done.txt = %v, want empty", done)
+	}
+}
+
+// The help screen explains the method and walks through the five GTD phases.
+func TestHelpScreen(t *testing.T) {
+	srv, _ := newTestServer(t)
+	b := do(t, srv, "GET", "/help", nil).Body.String()
+	for _, phase := range []string{"Capture", "Clarify", "Organize", "Reflect", "Engage"} {
+		if !strings.Contains(b, phase) {
+			t.Errorf("help screen missing the %q phase", phase)
+		}
+	}
+}
+
+// The Done screen lists completed tasks and Restore brings one back to the
+// active list, un-completed and out of done.txt.
+func TestDoneScreenAndRestore(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"Mop the floor"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"home"}})
+	do(t, srv, "POST", "/done", url.Values{"id": {"0"}, "back": {"/next"}})
+
+	// The Done screen (GET /done) shows the completed item.
+	if b := do(t, srv, "GET", "/done", nil).Body.String(); !strings.Contains(b, "Mop the floor") {
+		t.Fatalf("done screen missing the completed task; got %s", b)
+	}
+
+	if rec := do(t, srv, "POST", "/restore", url.Values{"id": {"0"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("restore = %d, want 303", rec.Code)
+	}
+	active, _ := store.Read(todotxt.ActiveFile)
+	done, _ := store.Read(todotxt.DoneFile)
+	if len(done) != 0 {
+		t.Errorf("restore left the task in done.txt: %v", done)
+	}
+	if len(active) != 1 || active[0].Done {
+		t.Fatalf("restore did not return an un-completed task: %v", active)
+	}
+	// It kept its real context, so it rejoins next actions.
+	if !active[0].HasContext("home") {
+		t.Errorf("restored task lost its context: %v", active[0])
+	}
+}
+
+// A task completed with no real context (a "do it now") must not vanish on
+// restore — it falls back to the inbox so it can be re-clarified.
+func TestRestoreContextlessGoesToInbox(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"two-minute thing"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"donow"}})
+
+	do(t, srv, "POST", "/restore", url.Values{"id": {"0"}})
+	active, _ := store.Read(todotxt.ActiveFile)
+	if len(active) != 1 || !active[0].HasContext("inbox") {
+		t.Fatalf("context-less restore should land in the inbox: %v", active)
 	}
 }
 

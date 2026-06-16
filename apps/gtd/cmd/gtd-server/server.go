@@ -47,7 +47,9 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.HandleFunc("/waiting", s.handleWaiting)
 	s.mux.HandleFunc("/projects", s.handleProjects)
 	s.mux.HandleFunc("/raw", s.handleRaw)
+	s.mux.HandleFunc("/help", s.handleHelp)
 	s.mux.HandleFunc("/done", s.handleDone)
+	s.mux.HandleFunc("/restore", s.handleRestore)
 	s.mux.HandleFunc("/edit", s.handleEdit)
 	s.mux.HandleFunc("/undo", s.handleUndo)
 
@@ -58,6 +60,7 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.HandleFunc("/api/done", s.apiDone)
 	s.mux.HandleFunc("/api/edit", s.apiEdit)
 	s.mux.HandleFunc("/api/undo", s.apiUndo)
+	s.mux.HandleFunc("/api/restore", s.apiRestore)
 	return s, nil
 }
 
@@ -142,6 +145,23 @@ func stripInbox(t todotxt.Task) todotxt.Task {
 	return t
 }
 
+// markUndone is the inverse of markDone: it clears the done marker and
+// completion date and restores a priority that markDone parked in a pri: tag.
+// A restored task with no real context (and not a waiting item) would be
+// invisible on every list, so it falls back to the inbox to be re-clarified.
+func markUndone(t todotxt.Task) todotxt.Task {
+	t.Done = false
+	t.Completed = ""
+	if p := t.Tag("pri"); p != "" {
+		t.Priority = p
+		t.SetTag("pri", "")
+	}
+	if !gtd.IsWaiting(t) && !gtd.HasRealContext(t) {
+		t.AddContext(gtd.ContextInbox)
+	}
+	return t
+}
+
 // safeBack confines a redirect target to a local path, rejecting absolute and
 // scheme-relative URLs so the back param can't become an open redirect.
 func safeBack(back string) string {
@@ -181,6 +201,12 @@ func (s *server) completeActive(id int) error {
 	return s.store.Transfer(todotxt.ActiveFile, id, todotxt.DoneFile, markDone)
 }
 
+// restoreDone un-completes the done-file task at id and moves it back to the
+// active list atomically.
+func (s *server) restoreDone(id int) error {
+	return s.store.Transfer(todotxt.DoneFile, id, todotxt.ActiveFile, markUndone)
+}
+
 // editActive replaces the description of the task at id, preserving its
 // structured fields (done marker, priority, dates). The new text is the
 // caller's responsibility to normalise — see normalizeText.
@@ -196,6 +222,12 @@ func normalizeText(s string) string {
 }
 
 // --- HTML handlers ----------------------------------------------------------
+
+// handleHelp serves the static guide to GTD and how this app implements it.
+// It's GET-only content with no state, so it needs no CSRF check.
+func (s *server) handleHelp(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "help", nil)
+}
 
 type counts struct {
 	Inbox, Next, Waiting, Projects, Stalled int
@@ -288,7 +320,7 @@ func processData(inbox []gtd.Item, errMsg, decision string) map[string]any {
 	it := inbox[0]
 	return map[string]any{
 		"Item":      it,
-		"Text":      strings.TrimSpace(strings.ReplaceAll(it.Task.Text, "@inbox", "")),
+		"Text":      strings.TrimSpace(strings.ReplaceAll(it.Task.DisplayText(), "@inbox", "")),
 		"Remaining": len(inbox),
 		"Today":     today(),
 		"Error":     errMsg,
@@ -470,7 +502,44 @@ func (s *server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleDone serves the Done screen (GET) — completed actions, newest first —
+// and completes an active task (POST), the action the task lists post to.
 func (s *server) handleDone(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		if !s.csrfOK(r) {
+			http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+			return
+		}
+		id, err := strconv.Atoi(r.FormValue("id"))
+		if err != nil {
+			http.Error(w, "bad id", 400)
+			return
+		}
+		if err := s.completeActive(id); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+		return
+	}
+	tasks, err := s.store.Read(todotxt.DoneFile)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	// done.txt is appended chronologically; show the most recently completed
+	// first while keeping each Item's ID as its true done-file index so Restore
+	// targets the right line.
+	items := gtd.Items(tasks)
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
+	s.render(w, "done", map[string]any{"Items": items})
+}
+
+// handleRestore brings a completed task back to the active list, un-completing
+// it. Like /done it's a mutation, so the global Undo can roll it back.
+func (s *server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
@@ -484,37 +553,25 @@ func (s *server) handleDone(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", 400)
 		return
 	}
-	if err := s.completeActive(id); err != nil {
+	if err := s.restoreDone(id); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+	http.Redirect(w, r, "/done", http.StatusSeeOther)
 }
 
-// handleEdit serves the edit form (GET) and applies a description change (POST).
-// It edits only the description, so the task keeps its place, dates and any
-// structured fields — the same in-place semantics as the Clarify "next" branch.
+// noteMax bounds a single note's size — generous for free-form notes and
+// references, but a guard against a runaway paste filling the disk.
+const noteMax = 100_000
+
+// handleEdit serves the edit form (GET) and applies the edit (POST). The form
+// mirrors the Clarify screen's controls: besides the description you can set a
+// context, mark the item as waiting on someone, set defer/due dates, and attach
+// free-form notes & references. Edits happen in place, so the task keeps its
+// position and completion state.
 func (s *server) handleEdit(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
-		if !s.csrfOK(r) {
-			http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-			return
-		}
-		id, err := strconv.Atoi(r.FormValue("id"))
-		if err != nil {
-			http.Error(w, "bad id", 400)
-			return
-		}
-		text := normalizeText(r.FormValue("text"))
-		if text == "" {
-			http.Error(w, "an item can't be blank", 400)
-			return
-		}
-		if err := s.editActive(id, text); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+		s.editPost(w, r)
 		return
 	}
 	id, err := strconv.Atoi(r.URL.Query().Get("id"))
@@ -531,11 +588,98 @@ func (s *server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
+	t := items[id].Task
+	note := ""
+	if key := t.Tag("note"); key != "" {
+		note, _ = s.store.ReadNote(key)
+	}
+	// Show the description without the tags the form surfaces as their own
+	// fields, so they aren't edited in two places at once.
+	disp := t
+	for _, k := range []string{"due", "t", "for", "note"} {
+		disp.SetTag(k, "")
+	}
 	s.render(w, "edit", map[string]any{
-		"Item": items[id],
-		"Back": safeBack(r.URL.Query().Get("back")),
+		"Item":      items[id],
+		"Back":      safeBack(r.URL.Query().Get("back")),
+		"Text":      disp.Text,
+		"Due":       t.Tag("due"),
+		"Threshold": t.Tag("t"),
+		"Person":    t.Tag("for"),
+		"Note":      note,
 	})
 }
+
+// editPost applies the edit form. Structured fields are layered onto the new
+// description; an empty date/person field clears its tag, so the form is the
+// task's full state. The note lives in its own file, keyed by a note: tag we
+// mint on first use.
+func (s *server) editPost(w http.ResponseWriter, r *http.Request) {
+	if !s.csrfOK(r) {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
+	id, err := strconv.Atoi(r.FormValue("id"))
+	if err != nil {
+		http.Error(w, "bad id", 400)
+		return
+	}
+	f := func(k string) string { return strings.TrimSpace(r.FormValue(k)) }
+	text := normalizeText(r.FormValue("text"))
+	if text == "" {
+		http.Error(w, "an item can't be blank", 400)
+		return
+	}
+	notes := strings.TrimRight(r.FormValue("notes"), " \t\r\n")
+	if len(notes) > noteMax {
+		http.Error(w, "note too large", 400)
+		return
+	}
+
+	// Resolve (and if needed mint) the note key before mutating the task, so we
+	// can write the note file outside the store lock the mutation takes.
+	noteKey := ""
+	if items, err := s.activeItems(); err == nil && id >= 0 && id < len(items) {
+		noteKey = items[id].Task.Tag("note")
+	}
+	if notes != "" && noteKey == "" {
+		noteKey = newNoteKey()
+	}
+	if noteKey != "" {
+		if err := s.store.WriteNote(noteKey, notes); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	}
+
+	ctx, person := f("context"), f("person")
+	err = s.replaceActive(id, func(t *todotxt.Task) {
+		t.Text = text
+		if ctx != "" {
+			t.RemoveContext(gtd.ContextInbox)
+			t.AddContext(ctx)
+		}
+		if person != "" {
+			t.AddContext(gtd.ContextWaiting)
+		}
+		t.SetTag("for", person)
+		t.SetTag("due", f("due"))
+		t.SetTag("t", f("threshold"))
+		if notes != "" {
+			t.SetTag("note", noteKey)
+		} else {
+			t.SetTag("note", "")
+		}
+	})
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+}
+
+// newNoteKey mints a filename-safe, collision-resistant key for a fresh note.
+func newNoteKey() string { return time.Now().Format("20060102-150405.000000000") }
 
 // handleUndo rolls back the last mutation and returns to the page the request
 // came from. A no-op (nothing to undo) is not an error — just redirect back.
@@ -619,6 +763,13 @@ func (s *server) apiTasks(w http.ResponseWriter, r *http.Request) {
 		out = gtd.NextActions(items, t, q.Get("context"))
 	case "all":
 		out = items
+	case "done":
+		done, err := s.store.Read(todotxt.DoneFile)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		out = gtd.Items(done)
 	default:
 		http.Error(w, "unknown view", 400)
 		return
@@ -687,6 +838,25 @@ func (s *server) apiEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.editActive(body.ID, text); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) apiRestore(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || !s.csrfOK(r) {
+		http.Error(w, "POST with X-GTD-Client required", http.StatusForbidden)
+		return
+	}
+	var body struct {
+		ID int `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad body", 400)
+		return
+	}
+	if err := s.restoreDone(body.ID); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
