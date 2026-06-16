@@ -137,6 +137,7 @@ button:active { transform: translateY(1px); }
 .projects li { display: flex; gap: .6rem; align-items: center; justify-content: space-between;
   padding: .7rem 0; border-bottom: 1px solid #313244; }
 .projects li.stalled a { color: var(--warn); }
+.projects li.parked a { color: var(--sub); }
 
 /* Raw file view */
 .rawtabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }

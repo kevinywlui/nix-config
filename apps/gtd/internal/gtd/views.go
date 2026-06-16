@@ -90,13 +90,21 @@ func Waiting(items []Item) []Item {
 	return filter(items, func(t todotxt.Task) bool { return !t.Done && IsWaiting(t) })
 }
 
-// NextActions returns next actions; if context != "" it filters to that context.
-func NextActions(items []Item, today, context string) []Item {
+// NextActions returns next actions, optionally filtered to a context and/or a
+// project (each empty string means "don't filter on that dimension"). When both
+// are set the filters intersect.
+func NextActions(items []Item, today, context, project string) []Item {
 	return filter(items, func(t todotxt.Task) bool {
 		if !IsNextAction(t, today) {
 			return false
 		}
-		return context == "" || t.HasContext(context)
+		if context != "" && !t.HasContext(context) {
+			return false
+		}
+		if project != "" && !t.HasProject(project) {
+			return false
+		}
+		return true
 	})
 }
 
@@ -129,39 +137,57 @@ func Contexts(items []Item, today string) []Context {
 	return out
 }
 
-// Project is a project name with the count of associated next actions. A count
-// of zero marks a stalled project (one with no next action) — the highest-value
-// signal a GTD review can surface.
+// Project is a project name with a breakdown of its active (not-done) tasks:
+// Actions (next actions advancing it), Waiting (delegated/awaiting), and
+// Deferred (a real next step, just dormant until its t: date). The split lets a
+// review tell three very different states apart — see Stalled/Parked.
 type Project struct {
-	Name    string
-	Actions int
+	Name     string
+	Actions  int
+	Waiting  int
+	Deferred int
 }
 
+// Stalled reports a project that genuinely needs attention: it has active tasks
+// but not one of them is a next action, a waiting item, or a deferred step — so
+// nothing will ever move it. This is the highest-value signal a GTD review
+// surfaces. (A project whose tasks are all done simply drops off the list.)
+func (p Project) Stalled() bool { return p.Actions == 0 && p.Waiting == 0 && p.Deferred == 0 }
+
+// Parked reports a project with no next action right now but which is legitimately
+// in motion — waiting on someone or deferred to a future date. Amber, not red.
+func (p Project) Parked() bool { return p.Actions == 0 && !p.Stalled() }
+
 // Projects returns the distinct +projects across all active (not-done) tasks,
-// each annotated with how many current next actions advance it.
+// each annotated with its next/waiting/deferred task counts.
 func Projects(items []Item, today string) []Project {
 	order := []string{}
-	actions := map[string]int{}
-	seen := map[string]bool{}
+	acc := map[string]*Project{}
 	for _, it := range items {
-		if it.Task.Done {
+		t := it.Task
+		if t.Done {
 			continue
 		}
-		next := IsNextAction(it.Task, today)
-		for _, p := range it.Task.Projects() {
-			if !seen[p] {
-				seen[p] = true
-				order = append(order, p)
-				actions[p] = 0
+		for _, name := range t.Projects() {
+			p := acc[name]
+			if p == nil {
+				p = &Project{Name: name}
+				acc[name] = p
+				order = append(order, name)
 			}
-			if next {
-				actions[p]++
+			switch {
+			case IsNextAction(t, today):
+				p.Actions++
+			case IsWaiting(t):
+				p.Waiting++
+			case !IsInbox(t) && len(realContexts(t)) > 0 && !thresholdReached(t, today):
+				p.Deferred++
 			}
 		}
 	}
 	out := make([]Project, len(order))
-	for i, p := range order {
-		out[i] = Project{Name: p, Actions: actions[p]}
+	for i, name := range order {
+		out[i] = *acc[name]
 	}
 	return out
 }

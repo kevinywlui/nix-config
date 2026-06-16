@@ -34,7 +34,7 @@ func TestClassification(t *testing.T) {
 	if got := len(Waiting(items)); got != 1 {
 		t.Errorf("Waiting count = %d, want 1", got)
 	}
-	na := NextActions(items, today, "")
+	na := NextActions(items, today, "", "")
 	if got := len(na); got != 2 {
 		t.Errorf("NextActions count = %d, want 2", got)
 	}
@@ -48,7 +48,7 @@ func TestClassification(t *testing.T) {
 		t.Error("threshold task should be a next action after its t: date")
 	}
 
-	if got := len(NextActions(items, today, "calls")); got != 1 {
+	if got := len(NextActions(items, today, "calls", "")); got != 1 {
 		t.Errorf("calls next actions = %d, want 1", got)
 	}
 }
@@ -84,5 +84,35 @@ func TestContextsAndProjects(t *testing.T) {
 	}
 	if old == nil || old.Actions != 0 {
 		t.Errorf("oldproj should be stalled (0 actions), got %+v", old)
+	}
+	if site.Parked() || site.Stalled() {
+		t.Errorf("site has next actions; should be neither parked nor stalled: %+v", site)
+	}
+	if !old.Stalled() {
+		t.Errorf("oldproj (only an @inbox task) should be stalled: %+v", old)
+	}
+}
+
+// A project with no next action is "stalled" only if nothing is waiting or
+// deferred; a waiting-only or deferred-only project is "parked", not stalled.
+func TestProjectParkedVsStalled(t *testing.T) {
+	const today = "2026-06-15"
+	items := parseAll(
+		"call the vendor @waiting for:acme +deal",   // waiting-only
+		"kick off later t:2099-01-01 @home +reno",   // deferred-only
+		"abandoned thing +ghost",                    // no context => genuinely stuck
+	)
+	got := map[string]Project{}
+	for _, p := range Projects(items, today) {
+		got[p.Name] = p
+	}
+	if p := got["deal"]; !p.Parked() || p.Stalled() || p.Waiting != 1 {
+		t.Errorf("deal should be parked (waiting), got %+v", p)
+	}
+	if p := got["reno"]; !p.Parked() || p.Stalled() || p.Deferred != 1 {
+		t.Errorf("reno should be parked (deferred), got %+v", p)
+	}
+	if p := got["ghost"]; !p.Stalled() {
+		t.Errorf("ghost should be stalled, got %+v", p)
 	}
 }

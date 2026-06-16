@@ -1,11 +1,11 @@
 {{define "next"}}{{template "head" .}}
-<h1>Next actions{{if .Context}} <span class="badge">@{{.Context}}</span>{{end}}</h1>
+<h1>Next actions{{if .Context}} <span class="badge">@{{.Context}}</span>{{end}}{{if .Project}} <span class="badge">+{{.Project}}</span>{{end}}</h1>
 <p class="coach">These are concrete, do-able actions. Pick by context — what can you
 actually do <i>right now</i>, given where you are and what you've got? Don't overthink
 priority; just engage.</p>
 
 {{if not .Items}}
-  <p class="empty">Nothing here. {{if .Context}}<a href="/next">See all contexts</a>.{{else}}
+  <p class="empty">Nothing here. {{if or .Context .Project}}<a href="/next">See all next actions</a>.{{else}}
   <a href="/process">Process your inbox</a> to create some.{{end}}</p>
 {{end}}
 
@@ -14,14 +14,14 @@ priority; just engage.</p>
   <li>
     <form method="post" action="/done" class="doneform">
       <input type="hidden" name="id" value="{{.ID}}">
-      <input type="hidden" name="back" value="/next{{if $.Context}}?context={{$.Context}}{{end}}">
+      <input type="hidden" name="back" value="{{$.Self}}">
       <button type="submit" class="check" title="Mark done">✓</button>
     </form>
     <div class="body">
       <span class="txt">{{.Task.DisplayText}}{{if .Task.Tag "note"}} <span class="noteflag" title="Has notes">📝</span>{{end}}</span>
       {{if .Task.Tag "due"}}<span class="due">due {{.Task.Tag "due"}}</span>{{end}}
     </div>
-    <a class="edit" href="/edit?id={{.ID}}&amp;back=/next{{if $.Context}}?context={{$.Context}}{{end}}" title="Edit">✎</a>
+    <a class="edit" href="/edit?id={{.ID}}&amp;back={{$.Self}}" title="Edit">✎</a>
   </li>
   {{end}}
 </ul>

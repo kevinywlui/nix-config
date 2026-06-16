@@ -247,13 +247,13 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	projs := gtd.Projects(items, t)
 	stalled := 0
 	for _, p := range projs {
-		if p.Actions == 0 {
+		if p.Stalled() {
 			stalled++
 		}
 	}
 	c := counts{
 		Inbox:    len(gtd.Inbox(items)),
-		Next:     len(gtd.NextActions(items, t, "")),
+		Next:     len(gtd.NextActions(items, t, "", "")),
 		Waiting:  len(gtd.Waiting(items)),
 		Projects: len(projs),
 		Stalled:  stalled,
@@ -308,7 +308,9 @@ func (s *server) handleProcess(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "process-empty", nil)
 		return
 	}
-	s.render(w, "process", processData(inbox, "", ""))
+	data := processData(inbox, "", "")
+	data["Projects"] = s.projectNames()
+	s.render(w, "process", data)
 }
 
 // processData builds the Clarify view model for the first inbox item. err and
@@ -342,7 +344,9 @@ func (s *server) processError(w http.ResponseWriter, msg, decision string) {
 		s.render(w, "process-empty", nil)
 		return
 	}
-	s.renderStatus(w, http.StatusBadRequest, "process", processData(inbox, msg, decision))
+	data := processData(inbox, msg, decision)
+	data["Projects"] = s.projectNames()
+	s.renderStatus(w, http.StatusBadRequest, "process", data)
 }
 
 func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
@@ -430,10 +434,31 @@ func (s *server) handleNext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.URL.Query().Get("context")
+	proj := r.URL.Query().Get("project")
 	s.render(w, "next", map[string]any{
-		"Items":   gtd.NextActions(items, today(), ctx),
+		"Items":   gtd.NextActions(items, today(), ctx, proj),
 		"Context": ctx,
+		"Project": proj,
+		// Self is this page's own URL, used as the back target for the Done and
+		// Edit links so they return to the same filtered view.
+		"Self": nextURL(ctx, proj),
 	})
+}
+
+// nextURL builds the /next URL for the given context/project filters, omitting
+// empty ones.
+func nextURL(ctx, proj string) string {
+	q := url.Values{}
+	if ctx != "" {
+		q.Set("context", ctx)
+	}
+	if proj != "" {
+		q.Set("project", proj)
+	}
+	if e := q.Encode(); e != "" {
+		return "/next?" + e
+	}
+	return "/next"
 }
 
 func (s *server) handleContexts(w http.ResponseWriter, r *http.Request) {
@@ -461,6 +486,21 @@ func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, "projects", map[string]any{"Projects": gtd.Projects(items, today())})
+}
+
+// projectNames returns the active project names, for autocomplete datalists on
+// the Clarify and Edit forms (keeping names consistent avoids +Foo/+foo drift).
+func (s *server) projectNames() []string {
+	items, err := s.activeItems()
+	if err != nil {
+		return nil
+	}
+	projs := gtd.Projects(items, today())
+	names := make([]string, len(projs))
+	for i, p := range projs {
+		names[i] = p.Name
+	}
+	return names
 }
 
 // rawFiles maps the ?file= selector to the on-disk file, in display order.
@@ -607,6 +647,7 @@ func (s *server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		"Threshold": t.Tag("t"),
 		"Person":    t.Tag("for"),
 		"Note":      note,
+		"Projects":  s.projectNames(),
 	})
 }
 
@@ -652,12 +693,15 @@ func (s *server) editPost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ctx, person := f("context"), f("person")
+	ctx, person, proj := f("context"), f("person"), f("project")
 	err = s.replaceActive(id, func(t *todotxt.Task) {
 		t.Text = text
 		if ctx != "" {
 			t.RemoveContext(gtd.ContextInbox)
 			t.AddContext(ctx)
+		}
+		if proj != "" {
+			t.AddProject(proj)
 		}
 		if person != "" {
 			t.AddContext(gtd.ContextWaiting)
@@ -760,7 +804,7 @@ func (s *server) apiTasks(w http.ResponseWriter, r *http.Request) {
 	case "waiting":
 		out = gtd.Waiting(items)
 	case "next", "":
-		out = gtd.NextActions(items, t, q.Get("context"))
+		out = gtd.NextActions(items, t, q.Get("context"), q.Get("project"))
 	case "all":
 		out = items
 	case "done":

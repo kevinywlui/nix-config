@@ -372,6 +372,52 @@ func TestUndoRestoresCompletedTask(t *testing.T) {
 	}
 }
 
+// Next actions can be filtered by project, and the projects screen links there
+// (not to the old dead /next?context= link).
+func TestNextFilterByProject(t *testing.T) {
+	srv, _ := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"buy tiles"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"errands"}})
+	do(t, srv, "POST", "/edit", url.Values{"id": {"0"}, "text": {"buy tiles @errands"}, "project": {"Reno"}})
+	do(t, srv, "POST", "/capture", url.Values{"text": {"email Sam"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"1"}, "decision": {"next"}, "context": {"computer"}})
+
+	// Filtered to +Reno: only the tiles task.
+	b := do(t, srv, "GET", "/next?project=Reno", nil).Body.String()
+	if !strings.Contains(b, "buy tiles") || strings.Contains(b, "email Sam") {
+		t.Fatalf("/next?project=Reno should show only the Reno task; got %s", b)
+	}
+	// The projects screen links into the project filter.
+	p := do(t, srv, "GET", "/projects", nil).Body.String()
+	if !strings.Contains(p, `href="/next?project=Reno"`) {
+		t.Errorf("projects screen should link to the project-filtered next list; got %s", p)
+	}
+	// API parity.
+	a := do(t, srv, "GET", "/api/tasks?view=next&project=Reno", nil).Body.String()
+	if !strings.Contains(a, "buy tiles") || strings.Contains(a, "email Sam") {
+		t.Errorf("api project filter wrong; got %s", a)
+	}
+}
+
+// Assigning a project via the edit form adds the +tag (existing projects stay).
+func TestEditAddsProject(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"pick paint"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"errands"}})
+
+	do(t, srv, "POST", "/edit", url.Values{"id": {"0"}, "text": {"pick paint @errands"}, "project": {"Reno"}})
+	active, _ := store.Read(todotxt.ActiveFile)
+	if !active[0].HasProject("Reno") {
+		t.Fatalf("project not added: %q", active[0].Text)
+	}
+	// Idempotent: re-adding the same project doesn't duplicate it.
+	do(t, srv, "POST", "/edit", url.Values{"id": {"0"}, "text": {"pick paint @errands +Reno"}, "project": {"Reno"}})
+	active, _ = store.Read(todotxt.ActiveFile)
+	if got := strings.Count(active[0].Text, "+Reno"); got != 1 {
+		t.Errorf("project should appear once, got %d in %q", got, active[0].Text)
+	}
+}
+
 // The help screen explains the method and walks through the five GTD phases.
 func TestHelpScreen(t *testing.T) {
 	srv, _ := newTestServer(t)

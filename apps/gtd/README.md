@@ -46,7 +46,7 @@ tag), and `backups/` (last 50 pre-write snapshots per file).
 Web (same-origin, browser): `/`, `/capture`, `/process`, `/next`, `/contexts`,
 `/waiting`, `/projects`, `/done` (completed; POST also completes a task),
 `/restore`, `/edit`, `/undo`, `/raw`, `/help`. JSON (CLI):
-`GET /api/tasks?view=next|inbox|waiting|done|all&context=`, `POST /api/capture`,
+`GET /api/tasks?view=next|inbox|waiting|done|all&context=&project=`, `POST /api/capture`,
 `POST /api/done`, `POST /api/edit`, `POST /api/restore`, `POST /api/undo`. All
 mutating requests must be same-origin or carry the `X-GTD-Client` header (CSRF
 defense); the CLI sets it automatically.

@@ -35,7 +35,7 @@ multi-step <b>project</b>? Decide once, here.</p>
     <label class="opt"><input type="radio" name="decision" value="project"{{if eq .Decision "project"}} checked{{end}}>
       <span><b>It's a project</b> — it takes more than one step to finish.</span></label>
     <div class="panel" data-for="project">
-      <label>Short project tag<input type="text" name="project" placeholder="KitchenReno"></label>
+      <label>Short project tag<input type="text" name="project" placeholder="KitchenReno" list="projlist"></label>
       <label>The very next physical action<input type="text" name="na_text" placeholder="Measure the back wall"></label>
       <label>…in which context<input type="text" name="na_context" placeholder="home" list="ctxlist"></label>
       <p class="hint">A project isn't something you "do" — it's an outcome. We park its
@@ -62,6 +62,9 @@ multi-step <b>project</b>? Decide once, here.</p>
   <datalist id="ctxlist">
     <option value="calls"><option value="computer"><option value="errands">
     <option value="home"><option value="office"><option value="agenda">
+  </datalist>
+  <datalist id="projlist">
+    {{range .Projects}}<option value="{{.}}">{{end}}
   </datalist>
 
   <button type="submit">Apply &amp; next →</button>
