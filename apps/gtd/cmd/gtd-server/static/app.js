@@ -31,25 +31,36 @@
   });
 })();
 
-// A "Today" button beside every date field, so the common case (defer/due =
-// today) is one tap instead of spinning a date picker. Progressive enhancement:
-// without JS the native picker still works and no dead button is rendered. We
-// deliberately don't default the fields to today — most actions want no date.
+// Quick-set buttons beside every date field, so the common cases (defer/due =
+// today / tomorrow / next week) are one tap instead of spinning a date picker.
+// Progressive enhancement: without JS the native picker still works and no dead
+// buttons are rendered. We deliberately don't default the fields — most actions
+// want no date at all.
 (function () {
-  function todayISO() {
+  function isoOffset(days) {
     var d = new Date();
+    d.setDate(d.getDate() + days); // rolls over month/year correctly
     var m = String(d.getMonth() + 1).padStart(2, "0");
     var day = String(d.getDate()).padStart(2, "0");
     return d.getFullYear() + "-" + m + "-" + day;
   }
+  var quicks = [
+    { label: "Today", days: 0 },
+    { label: "Tomorrow", days: 1 },
+    { label: "+1 week", days: 7 },
+  ];
   document.querySelectorAll('input[type="date"]').forEach(function (input) {
-    var btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "today";
-    btn.textContent = "Today";
-    btn.addEventListener("click", function () {
-      input.value = todayISO();
+    var row = document.createElement("div");
+    row.className = "quickdates";
+    quicks.forEach(function (q) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = q.label;
+      btn.addEventListener("click", function () {
+        input.value = isoOffset(q.days);
+      });
+      row.appendChild(btn);
     });
-    input.insertAdjacentElement("afterend", btn);
+    input.insertAdjacentElement("afterend", row);
   });
 })();
