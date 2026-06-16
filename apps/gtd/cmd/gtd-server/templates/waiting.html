@@ -17,6 +17,7 @@ own the follow-up. Scan this list in your weekly review and chase anyone who's g
       {{if .Task.Tag "for"}}<span class="who">for {{.Task.Tag "for"}}</span>{{end}}
       {{if .Task.Tag "t"}}<span class="due">follow up {{.Task.Tag "t"}}</span>{{end}}
     </div>
+    <a class="edit" href="/edit?id={{.ID}}&amp;back=/waiting" title="Edit">✎</a>
   </li>
   {{end}}
 </ul>

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -47,12 +48,16 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.HandleFunc("/projects", s.handleProjects)
 	s.mux.HandleFunc("/raw", s.handleRaw)
 	s.mux.HandleFunc("/done", s.handleDone)
+	s.mux.HandleFunc("/edit", s.handleEdit)
+	s.mux.HandleFunc("/undo", s.handleUndo)
 
 	s.mux.Handle("/static/", http.FileServer(http.FS(staticFS)))
 
 	s.mux.HandleFunc("/api/tasks", s.apiTasks)
 	s.mux.HandleFunc("/api/capture", s.apiCapture)
 	s.mux.HandleFunc("/api/done", s.apiDone)
+	s.mux.HandleFunc("/api/edit", s.apiEdit)
+	s.mux.HandleFunc("/api/undo", s.apiUndo)
 	return s, nil
 }
 
@@ -76,6 +81,7 @@ func (s *server) render(w http.ResponseWriter, name string, data any) {
 // written after the body buffers successfully, so a template error still yields
 // a clean 500 rather than a half-written page with the wrong code.
 func (s *server) renderStatus(w http.ResponseWriter, code int, name string, data any) {
+	data = s.withCommon(data)
 	var buf bytes.Buffer
 	if err := s.tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
@@ -84,6 +90,20 @@ func (s *server) renderStatus(w http.ResponseWriter, code int, name string, data
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
 	buf.WriteTo(w)
+}
+
+// withCommon injects view data every page shares — currently CanUndo, which
+// drives the global Undo bar in the layout footer. Page handlers pass a
+// map[string]any (or nil); a page that already set CanUndo keeps its value.
+func (s *server) withCommon(data any) any {
+	m, ok := data.(map[string]any)
+	if !ok {
+		m = map[string]any{}
+	}
+	if _, set := m["CanUndo"]; !set {
+		m["CanUndo"] = s.store.CanUndo()
+	}
+	return m
 }
 
 // csrfOK rejects cross-site state-changing requests. A same-origin browser form
@@ -159,6 +179,20 @@ func (s *server) replaceActive(id int, fn func(*todotxt.Task)) error {
 // completeActive marks the task at id done and moves it to done.txt atomically.
 func (s *server) completeActive(id int) error {
 	return s.store.Transfer(todotxt.ActiveFile, id, todotxt.DoneFile, markDone)
+}
+
+// editActive replaces the description of the task at id, preserving its
+// structured fields (done marker, priority, dates). The new text is the
+// caller's responsibility to normalise — see normalizeText.
+func (s *server) editActive(id int, text string) error {
+	return s.replaceActive(id, func(t *todotxt.Task) { t.Text = text })
+}
+
+// normalizeText collapses all runs of whitespace (including newlines, a
+// line-injection vector into the todo.txt file) to single spaces, matching how
+// Parse treats a captured line. Returns "" for blank input.
+func normalizeText(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // --- HTML handlers ----------------------------------------------------------
@@ -457,6 +491,85 @@ func (s *server) handleDone(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
 }
 
+// handleEdit serves the edit form (GET) and applies a description change (POST).
+// It edits only the description, so the task keeps its place, dates and any
+// structured fields — the same in-place semantics as the Clarify "next" branch.
+func (s *server) handleEdit(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		if !s.csrfOK(r) {
+			http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+			return
+		}
+		id, err := strconv.Atoi(r.FormValue("id"))
+		if err != nil {
+			http.Error(w, "bad id", 400)
+			return
+		}
+		text := normalizeText(r.FormValue("text"))
+		if text == "" {
+			http.Error(w, "an item can't be blank", 400)
+			return
+		}
+		if err := s.editActive(id, text); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+		return
+	}
+	id, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if err != nil {
+		http.Error(w, "bad id", 400)
+		return
+	}
+	items, err := s.activeItems()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	if id < 0 || id >= len(items) {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	s.render(w, "edit", map[string]any{
+		"Item": items[id],
+		"Back": safeBack(r.URL.Query().Get("back")),
+	})
+}
+
+// handleUndo rolls back the last mutation and returns to the page the request
+// came from. A no-op (nothing to undo) is not an error — just redirect back.
+func (s *server) handleUndo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.csrfOK(r) {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
+	if err := s.store.Undo(); err != nil && !errors.Is(err, todotxt.ErrNothingToUndo) {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	http.Redirect(w, r, refererPath(r), http.StatusSeeOther)
+}
+
+// refererPath returns the local path+query of a same-origin Referer, so Undo
+// (which carries no back field) returns to wherever its button was clicked. It
+// falls back to the dashboard, and runs through safeBack so a crafted Referer
+// can't become an open redirect.
+func refererPath(r *http.Request) string {
+	if u, err := url.Parse(r.Header.Get("Referer")); err == nil && u.Host == r.Host && u.Path != "" {
+		p := u.Path
+		if u.RawQuery != "" {
+			p += "?" + u.RawQuery
+		}
+		return safeBack(p)
+	}
+	return "/"
+}
+
 // --- JSON API (CLI) ---------------------------------------------------------
 
 type apiTask struct {
@@ -549,6 +662,47 @@ func (s *server) apiDone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.completeActive(body.ID); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) apiEdit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || !s.csrfOK(r) {
+		http.Error(w, "POST with X-GTD-Client required", http.StatusForbidden)
+		return
+	}
+	var body struct {
+		ID   int    `json:"id"`
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad body", 400)
+		return
+	}
+	text := normalizeText(body.Text)
+	if text == "" {
+		http.Error(w, "empty text", 400)
+		return
+	}
+	if err := s.editActive(body.ID, text); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) apiUndo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || !s.csrfOK(r) {
+		http.Error(w, "POST with X-GTD-Client required", http.StatusForbidden)
+		return
+	}
+	if err := s.store.Undo(); err != nil {
+		if errors.Is(err, todotxt.ErrNothingToUndo) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), 500)
 		return
 	}

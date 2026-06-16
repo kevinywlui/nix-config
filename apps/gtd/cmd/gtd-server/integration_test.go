@@ -108,7 +108,7 @@ func TestClarifyValidation(t *testing.T) {
 
 func TestMutatingEndpointsRejectGET(t *testing.T) {
 	srv, _ := newTestServer(t)
-	for _, p := range []string{"/process/do", "/done"} {
+	for _, p := range []string{"/process/do", "/done", "/undo"} {
 		if rec := do(t, srv, "GET", p, nil); rec.Code != http.StatusMethodNotAllowed {
 			t.Errorf("GET %s = %d, want 405", p, rec.Code)
 		}
@@ -178,6 +178,127 @@ func TestClarifyAllDestinations(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Editing changes only the description, leaving the task's place and its
+// structured fields (here, the creation date) untouched.
+func TestEditFlow(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"Call dentits"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"calls"}})
+
+	before, _ := store.Read(todotxt.ActiveFile)
+	created := before[0].Created
+	if created == "" {
+		t.Fatal("captured task should carry a creation date to preserve")
+	}
+
+	// The edit form is reachable and prefilled with the current text.
+	if b := do(t, srv, "GET", "/edit?id=0&back=/next", nil).Body.String(); !strings.Contains(b, "Call dentits") {
+		t.Fatalf("edit form missing current text; got %s", b)
+	}
+
+	if rec := do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"Call dentist @calls"}, "back": {"/next"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("edit = %d, want 303", rec.Code)
+	}
+	after, _ := store.Read(todotxt.ActiveFile)
+	if len(after) != 1 || after[0].Text != "Call dentist @calls" {
+		t.Fatalf("edit did not replace the text: %v", after)
+	}
+	if after[0].Created != created {
+		t.Errorf("edit clobbered the creation date: %q -> %q", created, after[0].Created)
+	}
+}
+
+// A newline in the edited text must be collapsed, never written through as a
+// second line that would forge an extra task in the file.
+func TestEditRejectsLineInjection(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"thing @home"}})
+
+	do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"line one\nx forged done line"}, "back": {"/next"},
+	})
+	active, _ := store.Read(todotxt.ActiveFile)
+	if len(active) != 1 {
+		t.Fatalf("edit injected a line: active = %v", active)
+	}
+	if strings.Contains(active[0].Text, "\n") {
+		t.Errorf("newline survived into the task text: %q", active[0].Text)
+	}
+
+	// An all-whitespace edit is rejected, not silently blanked.
+	if rec := do(t, srv, "POST", "/edit", url.Values{"id": {"0"}, "text": {"   "}}); rec.Code != 400 {
+		t.Errorf("blank edit = %d, want 400", rec.Code)
+	}
+}
+
+// Undo rolls back the last web mutation and the Undo bar appears only while
+// there's something to roll back.
+func TestUndoFlow(t *testing.T) {
+	srv, store := newTestServer(t)
+
+	// Nothing captured yet: the page carries no Undo bar.
+	if b := do(t, srv, "GET", "/capture", nil).Body.String(); strings.Contains(b, "Undo last change") {
+		t.Fatal("Undo bar shown with nothing to undo")
+	}
+
+	do(t, srv, "POST", "/capture", url.Values{"text": {"oops"}})
+	// After a mutation the next page shows the Undo affordance.
+	if b := do(t, srv, "GET", "/capture", nil).Body.String(); !strings.Contains(b, "Undo last change") {
+		t.Fatal("Undo bar missing after a capture")
+	}
+
+	if rec := do(t, srv, "POST", "/undo", url.Values{}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("undo = %d, want 303", rec.Code)
+	}
+	if active, _ := store.Read(todotxt.ActiveFile); len(active) != 0 {
+		t.Fatalf("undo did not remove the captured item: %v", active)
+	}
+	// Undo is single-level: the bar is gone again.
+	if b := do(t, srv, "GET", "/capture", nil).Body.String(); strings.Contains(b, "Undo last change") {
+		t.Error("Undo bar still shown after undoing")
+	}
+}
+
+// The inbox-emoji favicon is served from the embedded static FS and linked in
+// every page's head.
+func TestFavicon(t *testing.T) {
+	srv, _ := newTestServer(t)
+	rec := do(t, srv, "GET", "/static/favicon.svg", nil)
+	if rec.Code != 200 {
+		t.Fatalf("GET favicon = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "image/svg+xml") {
+		t.Errorf("favicon Content-Type = %q, want image/svg+xml", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "📥") {
+		t.Errorf("favicon should render the inbox emoji; got %s", rec.Body.String())
+	}
+	if b := do(t, srv, "GET", "/capture", nil).Body.String(); !strings.Contains(b, `rel="icon" href="/static/favicon.svg"`) {
+		t.Errorf("pages should link the favicon; got %s", b)
+	}
+}
+
+// Completing a task and then undoing must put it back on the active list and
+// out of done.txt in one step.
+func TestUndoRestoresCompletedTask(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"task"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"home"}})
+	do(t, srv, "POST", "/done", url.Values{"id": {"0"}, "back": {"/next"}})
+
+	do(t, srv, "POST", "/undo", url.Values{})
+	active, _ := store.Read(todotxt.ActiveFile)
+	done, _ := store.Read(todotxt.DoneFile)
+	if len(active) != 1 {
+		t.Errorf("undo of done: active = %v, want one task", active)
+	}
+	if len(done) != 0 {
+		t.Errorf("undo of done: done.txt = %v, want empty", done)
 	}
 }
 

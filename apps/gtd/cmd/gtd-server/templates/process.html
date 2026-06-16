@@ -4,7 +4,9 @@
 If yes, <b>what's the very next physical action</b> — and is it really one step, or a
 multi-step <b>project</b>? Decide once, here.</p>
 
-<blockquote class="item">{{.Text}}</blockquote>
+<blockquote class="item">{{.Text}}
+  <a class="edit" href="/edit?id={{.Item.ID}}&amp;back=/process" title="Edit wording">✎</a>
+</blockquote>
 
 {{if .Error}}<p class="flash err" role="alert">{{.Error}}</p>{{end}}
 

@@ -1,0 +1,16 @@
+{{define "edit"}}{{template "head" .}}
+<h1>Edit item</h1>
+<p class="coach">Fix the wording or adjust its inline <code>@context</code>,
+<code>+project</code> and <code>due:</code> tags. Its place, dates and completion
+state stay as they are.</p>
+
+<form method="post" action="/edit" class="capture">
+  <input type="hidden" name="id" value="{{.Item.ID}}">
+  <input type="hidden" name="back" value="{{.Back}}">
+  <input type="text" name="text" value="{{.Item.Task.Text}}" autofocus autocomplete="off" required>
+  <div class="row">
+    <button type="submit">Save</button>
+    <a class="btnlink" href="{{.Back}}">Cancel</a>
+  </div>
+</form>
+{{template "foot" .}}{{end}}

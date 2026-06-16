@@ -42,6 +42,54 @@ func TestTransferIsAtomicMove(t *testing.T) {
 	}
 }
 
+func TestUndoRollsBackLastMutation(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := New(dir)
+
+	if s.CanUndo() {
+		t.Fatal("a fresh store should have nothing to undo")
+	}
+	if err := s.Undo(); err != ErrNothingToUndo {
+		t.Fatalf("Undo on fresh store = %v, want ErrNothingToUndo", err)
+	}
+
+	// Append, then undo it: the file should be gone again (it didn't exist
+	// before the append).
+	if err := s.Append(ActiveFile, "buy milk @errands"); err != nil {
+		t.Fatal(err)
+	}
+	if !s.CanUndo() {
+		t.Fatal("CanUndo should be true after a mutation")
+	}
+	if err := s.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if active, _ := s.Read(ActiveFile); len(active) != 0 {
+		t.Errorf("after undoing the only append, active = %v, want empty", active)
+	}
+	if s.CanUndo() {
+		t.Error("undo is single-level: CanUndo should be false after undoing")
+	}
+
+	// A cross-file Transfer must undo as one step, restoring BOTH files.
+	s.Append(ActiveFile, "one @a")
+	s.Append(ActiveFile, "two @b")
+	if err := s.Transfer(ActiveFile, 0, DoneFile, func(x Task) Task { x.Done = true; return x }); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	active, _ := s.Read(ActiveFile)
+	done, _ := s.Read(DoneFile)
+	if len(active) != 2 || active[0].Text != "one @a" {
+		t.Errorf("transfer-undo did not restore active: %v", active)
+	}
+	if len(done) != 0 {
+		t.Errorf("transfer-undo did not roll back done.txt: %v", done)
+	}
+}
+
 func TestAppendPreservesExistingContent(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := New(dir)

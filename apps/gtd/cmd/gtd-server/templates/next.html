@@ -21,6 +21,7 @@ priority; just engage.</p>
       <span class="txt">{{.Task.Text}}</span>
       {{if .Task.Tag "due"}}<span class="due">due {{.Task.Tag "due"}}</span>{{end}}
     </div>
+    <a class="edit" href="/edit?id={{.ID}}&amp;back=/next{{if $.Context}}?context={{$.Context}}{{end}}" title="Edit">✎</a>
   </li>
   {{end}}
 </ul>

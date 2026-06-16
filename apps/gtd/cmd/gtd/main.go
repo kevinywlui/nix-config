@@ -57,6 +57,14 @@ func main() {
 			break
 		}
 		err = done(args[0])
+	case "edit":
+		if len(args) < 2 {
+			err = fmt.Errorf("usage: gtd edit <id> <text...>")
+			break
+		}
+		err = edit(args[0], strings.Join(args[1:], " "))
+	case "undo":
+		err = undo()
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -79,6 +87,8 @@ usage:
   gtd waiting           list delegated / waiting-for items
   gtd ls                list all active tasks
   gtd done <id>         complete the task with that id
+  gtd edit <id> <text>  replace the wording of the task with that id
+  gtd undo              roll back the last change
 
 GTD_ENDPOINT selects the server (default http://127.0.0.1:8730).
 `)
@@ -160,6 +170,41 @@ func done(idStr string) error {
 		return httpErr(resp)
 	}
 	fmt.Println("done.")
+	return nil
+}
+
+func edit(idStr, text string) error {
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return fmt.Errorf("id must be a number")
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return fmt.Errorf("nothing to set")
+	}
+	payload, _ := json.Marshal(map[string]any{"id": id, "text": text})
+	resp, err := request(http.MethodPost, "/api/edit", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return httpErr(resp)
+	}
+	fmt.Println("edited.")
+	return nil
+}
+
+func undo() error {
+	resp, err := request(http.MethodPost, "/api/undo", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return httpErr(resp)
+	}
+	fmt.Println("undone.")
 	return nil
 }
 

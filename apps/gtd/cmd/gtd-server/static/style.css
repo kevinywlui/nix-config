@@ -93,10 +93,27 @@ button:active { transform: translateY(1px); }
 .check { background: transparent; border: 2px solid var(--muted); color: var(--ok);
   width: 2.2rem; height: 2.2rem; border-radius: 50%; padding: 0; flex: none; }
 .doneform { margin: 0; }
-.tasks .body { display: flex; flex-direction: column; gap: .2rem; }
+.tasks .body { display: flex; flex-direction: column; gap: .2rem; flex: 1; }
 .tasks .txt { font-size: 1rem; }
 .due { font-size: .78rem; color: var(--warn); }
 .who { font-size: .78rem; color: var(--sub); }
+
+/* Edit affordance (task rows + the Clarify item) */
+.edit { color: var(--muted); font-size: 1.1rem; flex: none; padding: .3rem .5rem; line-height: 1; }
+.edit:hover { color: var(--accent); }
+.item { position: relative; }
+.item .edit { position: absolute; top: .5rem; right: .5rem; }
+
+/* Cancel link styled like a secondary button */
+.btnlink { display: inline-flex; align-items: center; padding: .7rem 1.1rem;
+  border-radius: var(--radius); background: var(--panel); color: var(--sub); font-weight: 600; }
+.capture .row { display: flex; gap: .5rem; align-items: center; }
+
+/* Undo bar (above the bottom tab bar) */
+.undobar { position: fixed; left: 0; right: 0; bottom: 3.4rem; margin: 0;
+  display: flex; justify-content: center; pointer-events: none; z-index: 6; }
+.undobar button { pointer-events: auto; background: var(--panel); color: var(--fg);
+  border: 1px solid #313244; font-size: .85rem; padding: .5rem 1rem; box-shadow: 0 2px 8px #0008; }
 
 .chips { list-style: none; display: flex; flex-wrap: wrap; gap: .6rem; }
 .chips a { background: var(--panel2); padding: .6rem .9rem; border-radius: 999px;

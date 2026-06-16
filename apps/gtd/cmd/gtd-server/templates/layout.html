@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1117">
+<link rel="icon" href="/static/favicon.svg">
 <link rel="manifest" href="/static/manifest.json">
 <link rel="stylesheet" href="/static/style.css">
 <title>GTD</title>
@@ -22,6 +23,11 @@
 <main>{{end}}
 
 {{define "foot"}}</main>
+{{if .CanUndo}}
+<form method="post" action="/undo" class="undobar">
+  <button type="submit" title="Undo the last change">↶ Undo last change</button>
+</form>
+{{end}}
 <nav class="tabbar">
   <a href="/capture">＋<span>Capture</span></a>
   <a href="/process">⇄<span>Process</span></a>
