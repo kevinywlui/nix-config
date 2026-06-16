@@ -54,6 +54,7 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.HandleFunc("/restore", s.handleRestore)
 	s.mux.HandleFunc("/edit", s.handleEdit)
 	s.mux.HandleFunc("/undo", s.handleUndo)
+	s.mux.HandleFunc("/redo", s.handleRedo)
 
 	s.mux.Handle("/static/", http.FileServer(http.FS(staticFS)))
 
@@ -63,6 +64,7 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.HandleFunc("/api/done", s.apiDone)
 	s.mux.HandleFunc("/api/edit", s.apiEdit)
 	s.mux.HandleFunc("/api/undo", s.apiUndo)
+	s.mux.HandleFunc("/api/redo", s.apiRedo)
 	s.mux.HandleFunc("/api/restore", s.apiRestore)
 	return s, nil
 }
@@ -87,15 +89,15 @@ func reverseItems(items []gtd.Item) {
 	}
 }
 
-func (s *server) render(w http.ResponseWriter, name string, data any) {
-	s.renderStatus(w, http.StatusOK, name, data)
+func (s *server) render(w http.ResponseWriter, r *http.Request, name string, data any) {
+	s.renderStatus(w, r, http.StatusOK, name, data)
 }
 
 // renderStatus renders a template with an explicit status code. The status is
 // written after the body buffers successfully, so a template error still yields
 // a clean 500 rather than a half-written page with the wrong code.
-func (s *server) renderStatus(w http.ResponseWriter, code int, name string, data any) {
-	data = s.withCommon(data)
+func (s *server) renderStatus(w http.ResponseWriter, r *http.Request, code int, name string, data any) {
+	data = s.withCommon(r, data)
 	var buf bytes.Buffer
 	if err := s.tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
@@ -106,18 +108,35 @@ func (s *server) renderStatus(w http.ResponseWriter, code int, name string, data
 	buf.WriteTo(w)
 }
 
-// withCommon injects view data every page shares — currently CanUndo, which
-// drives the global Undo bar in the layout footer. Page handlers pass a
-// map[string]any (or nil); a page that already set CanUndo keeps its value.
-func (s *server) withCommon(data any) any {
+// withCommon injects view data every page shares: the transient Undo/Redo
+// affordance. It shows only on the page you land on right after an action (the
+// redirect carries ?undo=1 / ?redo=1) and only if the store can actually act —
+// so it isn't a persistent control sitting in the thumb zone to mis-tap. Page
+// handlers pass a map[string]any (or nil) and may pre-set either key.
+func (s *server) withCommon(r *http.Request, data any) any {
 	m, ok := data.(map[string]any)
 	if !ok {
 		m = map[string]any{}
 	}
-	if _, set := m["CanUndo"]; !set {
-		m["CanUndo"] = s.store.CanUndo()
+	q := r.URL.Query()
+	if _, set := m["Undo"]; !set {
+		m["Undo"] = q.Get("undo") == "1" && s.store.CanUndo()
+	}
+	if _, set := m["Redo"]; !set {
+		m["Redo"] = q.Get("redo") == "1" && s.store.CanRedo()
 	}
 	return m
+}
+
+// withFlag appends a one-shot query flag (undo/redo) to a redirect target, so
+// the page the user lands on shows the matching transient affordance. The flag
+// is dropped as soon as they navigate via any normal link.
+func withFlag(path, flag string) string {
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + flag + "=1"
 }
 
 // csrfOK rejects cross-site state-changing requests. A same-origin browser form
@@ -237,7 +256,7 @@ func normalizeText(s string) string {
 // handleHelp serves the static guide to GTD and how this app implements it.
 // It's GET-only content with no state, so it needs no CSRF check.
 func (s *server) handleHelp(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "help", nil)
+	s.render(w, r, "help", nil)
 }
 
 type counts struct {
@@ -269,7 +288,7 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Projects: len(projs),
 		Stalled:  stalled,
 	}
-	s.render(w, "dashboard", map[string]any{"Counts": c})
+	s.render(w, r, "dashboard", map[string]any{"Counts": c})
 }
 
 func (s *server) handleCapture(w http.ResponseWriter, r *http.Request) {
@@ -285,7 +304,7 @@ func (s *server) handleCapture(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), 500)
 				return
 			}
-			dest = "/capture?ok=1"
+			dest = withFlag("/capture?ok=1", "undo")
 		}
 		http.Redirect(w, r, dest, http.StatusSeeOther)
 		return
@@ -294,7 +313,7 @@ func (s *server) handleCapture(w http.ResponseWriter, r *http.Request) {
 	if items, err := s.activeItems(); err == nil {
 		inbox = len(gtd.Inbox(items))
 	}
-	s.render(w, "capture", map[string]any{
+	s.render(w, r, "capture", map[string]any{
 		"Saved": r.URL.Query().Get("ok") == "1",
 		"Inbox": inbox,
 	})
@@ -318,12 +337,12 @@ func (s *server) handleProcess(w http.ResponseWriter, r *http.Request) {
 	}
 	inbox := gtd.Inbox(items)
 	if len(inbox) == 0 {
-		s.render(w, "process-empty", nil)
+		s.render(w, r, "process-empty", nil)
 		return
 	}
 	data := processData(inbox, "", "")
 	data["Projects"] = s.projectNames()
-	s.render(w, "process", data)
+	s.render(w, r, "process", data)
 }
 
 // processData builds the Clarify view model for the first inbox item. err and
@@ -348,7 +367,7 @@ func processData(inbox []gtd.Item, errMsg, decision string) map[string]any {
 // processError re-renders the Clarify page for the current first inbox item with
 // an inline validation message and a 400, preserving the chosen decision. Used
 // instead of http.Error so a user mistake stays inside the app's UI.
-func (s *server) processError(w http.ResponseWriter, msg, decision string) {
+func (s *server) processError(w http.ResponseWriter, r *http.Request, msg, decision string) {
 	items, err := s.activeItems()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -356,12 +375,12 @@ func (s *server) processError(w http.ResponseWriter, msg, decision string) {
 	}
 	inbox := gtd.Inbox(items)
 	if len(inbox) == 0 { // item got processed elsewhere meanwhile
-		s.render(w, "process-empty", nil)
+		s.render(w, r, "process-empty", nil)
 		return
 	}
 	data := processData(inbox, msg, decision)
 	data["Projects"] = s.projectNames()
-	s.renderStatus(w, http.StatusBadRequest, "process", data)
+	s.renderStatus(w, r, http.StatusBadRequest, "process", data)
 }
 
 func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
@@ -392,7 +411,7 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 	case "next":
 		ctx := f("context")
 		if ctx == "" {
-			s.processError(w, "Pick a context — a next action has to live on a context list (calls, computer, home…) so you can find it when you're there.", "next")
+			s.processError(w, r, "Pick a context — a next action has to live on a context list (calls, computer, home…) so you can find it when you're there.", "next")
 			return
 		}
 		err = s.replaceActive(id, func(t *todotxt.Task) {
@@ -411,7 +430,7 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 	case "project":
 		proj, naText, naCtx := f("project"), f("na_text"), f("na_context")
 		if proj == "" || naText == "" || naCtx == "" {
-			s.processError(w, "A project needs three things: a short tag, its very next physical action, and a context for that action.", "project")
+			s.processError(w, r, "A project needs three things: a short tag, its very next physical action, and a context for that action.", "project")
 			return
 		}
 		err = s.store.Mutate(todotxt.ActiveFile, func(ts []todotxt.Task) ([]todotxt.Task, error) {
@@ -426,14 +445,14 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 			return append(ts, na), nil
 		})
 	default:
-		s.processError(w, "Choose what this item is first — pick one of the options above.", f("decision"))
+		s.processError(w, r, "Choose what this item is first — pick one of the options above.", f("decision"))
 		return
 	}
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	http.Redirect(w, r, "/process", http.StatusSeeOther)
+	http.Redirect(w, r, withFlag("/process", "undo"), http.StatusSeeOther)
 }
 
 // moveOut strips the inbox marker and relocates the task to another file
@@ -450,7 +469,7 @@ func (s *server) handleNext(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.URL.Query().Get("context")
 	proj := r.URL.Query().Get("project")
-	s.render(w, "next", map[string]any{
+	s.render(w, r, "next", map[string]any{
 		"Items":   gtd.NextActions(items, today(), ctx, proj),
 		"Context": ctx,
 		"Project": proj,
@@ -482,7 +501,7 @@ func (s *server) handleContexts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.render(w, "contexts", map[string]any{"Contexts": gtd.Contexts(items, today())})
+	s.render(w, r, "contexts", map[string]any{"Contexts": gtd.Contexts(items, today())})
 }
 
 func (s *server) handleWaiting(w http.ResponseWriter, r *http.Request) {
@@ -491,7 +510,7 @@ func (s *server) handleWaiting(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.render(w, "waiting", map[string]any{"Items": gtd.Waiting(items)})
+	s.render(w, r, "waiting", map[string]any{"Items": gtd.Waiting(items)})
 }
 
 func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
@@ -500,7 +519,7 @@ func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.render(w, "projects", map[string]any{"Projects": gtd.Projects(items, today())})
+	s.render(w, r, "projects", map[string]any{"Projects": gtd.Projects(items, today())})
 }
 
 // blockedRow pairs a blocked task with the description of the prerequisite it's
@@ -555,7 +574,7 @@ func (s *server) handleProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.render(w, "project", map[string]any{
+	s.render(w, r, "project", map[string]any{
 		"Name":      name,
 		"Available": available,
 		"Blocked":   blocked,
@@ -626,7 +645,7 @@ func (s *server) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	http.Redirect(w, r, "/project?name="+url.QueryEscape(proj), http.StatusSeeOther)
+	http.Redirect(w, r, withFlag("/project?name="+url.QueryEscape(proj), "undo"), http.StatusSeeOther)
 }
 
 // newDepID mints a short, single-token key for the id:/after: dependency link.
@@ -678,7 +697,7 @@ func (s *server) handleRaw(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.render(w, "raw", map[string]any{
+	s.render(w, r, "raw", map[string]any{
 		"Tabs":    rawFiles,
 		"File":    key,
 		"Name":    name,
@@ -703,7 +722,7 @@ func (s *server) handleDone(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+		http.Redirect(w, r, withFlag(safeBack(r.FormValue("back")), "undo"), http.StatusSeeOther)
 		return
 	}
 	tasks, err := s.store.Read(todotxt.DoneFile)
@@ -716,7 +735,7 @@ func (s *server) handleDone(w http.ResponseWriter, r *http.Request) {
 	// targets the right line.
 	items := gtd.Items(tasks)
 	reverseItems(items)
-	s.render(w, "done", map[string]any{"Items": items})
+	s.render(w, r, "done", map[string]any{"Items": items})
 }
 
 // handleRestore brings a completed task back to the active list, un-completing
@@ -739,7 +758,7 @@ func (s *server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	http.Redirect(w, r, "/done", http.StatusSeeOther)
+	http.Redirect(w, r, withFlag("/done", "undo"), http.StatusSeeOther)
 }
 
 // noteMax bounds a single note's size — generous for free-form notes and
@@ -782,7 +801,7 @@ func (s *server) handleEdit(w http.ResponseWriter, r *http.Request) {
 	for _, k := range []string{"due", "t", "for", "note", "id", "after"} {
 		disp.SetTag(k, "")
 	}
-	s.render(w, "edit", map[string]any{
+	s.render(w, r, "edit", map[string]any{
 		"Item":      items[id],
 		"Back":      safeBack(r.URL.Query().Get("back")),
 		"Text":      disp.Text,
@@ -867,14 +886,15 @@ func (s *server) editPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+	http.Redirect(w, r, withFlag(safeBack(r.FormValue("back")), "undo"), http.StatusSeeOther)
 }
 
 // newNoteKey mints a filename-safe, collision-resistant key for a fresh note.
 func newNoteKey() string { return time.Now().Format("20060102-150405.000000000") }
 
 // handleUndo rolls back the last mutation and returns to the page the request
-// came from. A no-op (nothing to undo) is not an error — just redirect back.
+// came from, now offering a Redo so an accidental undo is one tap to recover. A
+// no-op (nothing to undo) is not an error — just redirect back.
 func (s *server) handleUndo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -888,22 +908,47 @@ func (s *server) handleUndo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	http.Redirect(w, r, refererPath(r), http.StatusSeeOther)
+	http.Redirect(w, r, withFlag(refererPath(r), "redo"), http.StatusSeeOther)
 }
 
-// refererPath returns the local path+query of a same-origin Referer, so Undo
-// (which carries no back field) returns to wherever its button was clicked. It
-// falls back to the dashboard, and runs through safeBack so a crafted Referer
-// can't become an open redirect.
-func refererPath(r *http.Request) string {
-	if u, err := url.Parse(r.Header.Get("Referer")); err == nil && u.Host == r.Host && u.Path != "" {
-		p := u.Path
-		if u.RawQuery != "" {
-			p += "?" + u.RawQuery
-		}
-		return safeBack(p)
+// handleRedo reapplies the change a prior undo rolled back, landing back on the
+// page with the Undo offered again so the two toggle.
+func (s *server) handleRedo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
 	}
-	return "/"
+	if !s.csrfOK(r) {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
+	if err := s.store.Redo(); err != nil && !errors.Is(err, todotxt.ErrNothingToRedo) {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	http.Redirect(w, r, withFlag(refererPath(r), "undo"), http.StatusSeeOther)
+}
+
+// refererPath returns the local path of a same-origin Referer, so Undo/Redo
+// (which carry no back field) return to wherever the button was clicked. It
+// strips the one-shot undo/redo/ok flags (the next affordance is added fresh by
+// the caller, and a stale "Captured." flash shouldn't reappear), falls back to
+// the dashboard, and runs through safeBack so a crafted Referer can't become an
+// open redirect.
+func refererPath(r *http.Request) string {
+	u, err := url.Parse(r.Header.Get("Referer"))
+	if err != nil || u.Host != r.Host || u.Path == "" {
+		return "/"
+	}
+	q := u.Query()
+	q.Del("undo")
+	q.Del("redo")
+	q.Del("ok")
+	p := u.Path
+	if e := q.Encode(); e != "" {
+		p += "?" + e
+	}
+	return safeBack(p)
 }
 
 // --- JSON API (CLI) ---------------------------------------------------------
@@ -1093,6 +1138,22 @@ func (s *server) apiUndo(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.store.Undo(); err != nil {
 		if errors.Is(err, todotxt.ErrNothingToUndo) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) apiRedo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || !s.csrfOK(r) {
+		http.Error(w, "POST with X-GTD-Client required", http.StatusForbidden)
+		return
+	}
+	if err := s.store.Redo(); err != nil {
+		if errors.Is(err, todotxt.ErrNothingToRedo) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}

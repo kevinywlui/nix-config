@@ -126,6 +126,43 @@ func TestNoteKeyRejectsTraversal(t *testing.T) {
 	}
 }
 
+// Redo reapplies an undone change; undo/redo toggle, and a fresh mutation
+// invalidates the pending redo.
+func TestRedo(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := New(dir)
+
+	if err := s.Redo(); err != ErrNothingToRedo {
+		t.Fatalf("Redo with no prior undo = %v, want ErrNothingToRedo", err)
+	}
+
+	s.Append(ActiveFile, "buy milk @errands")
+	if err := s.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if active, _ := s.Read(ActiveFile); len(active) != 0 {
+		t.Fatalf("after undo, active = %v, want empty", active)
+	}
+	if !s.CanRedo() {
+		t.Fatal("CanRedo should be true after an undo")
+	}
+
+	if err := s.Redo(); err != nil {
+		t.Fatal(err)
+	}
+	if active, _ := s.Read(ActiveFile); len(active) != 1 || active[0].Text != "buy milk @errands" {
+		t.Fatalf("after redo, active = %v, want the item back", active)
+	}
+	// Redo re-arms undo (they toggle); a fresh mutation then clears redo.
+	if !s.CanUndo() {
+		t.Error("CanUndo should be true again after a redo")
+	}
+	s.Append(ActiveFile, "another @home")
+	if s.CanRedo() {
+		t.Error("a fresh mutation must invalidate the pending redo")
+	}
+}
+
 func TestAppendPreservesExistingContent(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := New(dir)

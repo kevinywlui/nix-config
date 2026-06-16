@@ -127,11 +127,13 @@ button:active { transform: translateY(1px); }
   background: var(--panel); color: var(--fg); border: 1px solid #313244; border-radius: var(--radius);
   font-family: inherit; line-height: 1.5; }
 
-/* Undo bar (above the bottom tab bar) */
-.undobar { position: fixed; left: 0; right: 0; bottom: 3.4rem; margin: 0;
-  display: flex; justify-content: center; pointer-events: none; z-index: 6; }
-.undobar button { pointer-events: auto; background: var(--panel); color: var(--fg);
-  border: 1px solid #313244; font-size: .85rem; padding: .5rem 1rem; box-shadow: 0 2px 8px #0008; }
+/* Transient undo/redo affordance — sits in the content flow at the top of the
+   page right after an action (not a fixed control in the bottom thumb zone), so
+   it can't be mis-tapped while reaching for the nav. */
+.actionbar { margin: 0 0 1rem; }
+.actionbar button { background: var(--panel); color: var(--fg); border: 1px solid #313244;
+  font-size: .85rem; padding: .45rem 1rem; }
+.actionbar.redo button { color: var(--accent); border-color: var(--accent); }
 
 .chips { list-style: none; display: flex; flex-wrap: wrap; gap: .6rem; }
 .chips a { background: var(--panel2); padding: .6rem .9rem; border-radius: 999px;

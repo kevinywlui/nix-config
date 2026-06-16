@@ -47,14 +47,19 @@ tag), and `backups/` (last 50 pre-write snapshots per file).
 Web (same-origin, browser): `/`, `/capture`, `/process`, `/next`, `/contexts`,
 `/waiting`, `/projects`, `/project?name=` (one project's plan; `/project/add`
 appends a task, optionally blocked by another), `/done` (completed; POST also
-completes a task), `/restore`, `/edit`, `/undo`, `/raw`, `/help`. JSON (CLI):
-`GET /api/tasks?view=next|inbox|waiting|done|all&context=&project=`, `POST /api/capture`,
-`POST /api/done`, `POST /api/edit`, `POST /api/restore`, `POST /api/undo`. All
+completes a task), `/restore`, `/edit`, `/undo`, `/redo`, `/raw`, `/help`. JSON
+(CLI): `GET /api/tasks?view=next|inbox|waiting|done|all&context=&project=`,
+`GET /api/projects`, `POST /api/capture`, `POST /api/done`, `POST /api/edit`,
+`POST /api/restore`, `POST /api/undo`, `POST /api/redo`. All
 mutating requests must be same-origin or carry the `X-GTD-Client` header (CSRF
 defense); the CLI sets it automatically.
 
 Mutations keep a single-level, whole-store **undo** point (a snapshot of every
-file taken before each write); `POST /undo` restores it. Notes live in their own
+file taken before each write); `POST /undo` restores it, and `POST /redo`
+reapplies an undo (the pre-undo state is snapshotted too). In the web UI the
+undo/redo affordance is transient — offered only on the page you land on right
+after an action (via a one-shot `?undo=1`/`?redo=1` redirect flag), not a
+persistent control, so it can't be mis-tapped from the nav. Notes live in their own
 files so they may be multi-line; only the short `note:<key>` pointer sits on the
 todo.txt line, and it's hidden from the displayed text.
 

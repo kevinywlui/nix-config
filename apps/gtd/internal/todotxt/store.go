@@ -35,6 +35,9 @@ var managedFiles = []string{ActiveFile, DoneFile, SomedayFile, ReferenceFile}
 // ErrNothingToUndo is returned by Undo when no mutation has been recorded yet.
 var ErrNothingToUndo = errors.New("nothing to undo")
 
+// ErrNothingToRedo is returned by Redo when the last action wasn't an undo.
+var ErrNothingToRedo = errors.New("nothing to redo")
+
 // keepBackups bounds the timestamped backups retained per file. Older ones are
 // pruned on each write so a long-lived list cannot grow the dir unbounded.
 const keepBackups = 50
@@ -47,7 +50,8 @@ const keepBackups = 50
 type Store struct {
 	dir  string
 	mu   sync.Mutex
-	undo *snapshot // content of every managed file just before the last mutation
+	undo *snapshot // managed-file content from just before the last mutation
+	redo *snapshot // managed-file content from just before the last undo
 }
 
 // snapshot is the verbatim content of every managed file captured immediately
@@ -187,6 +191,7 @@ func (s *Store) Mutate(name string, fn func([]Task) ([]Task, error)) error {
 		return err
 	}
 	s.undo = snap
+	s.redo = nil // a fresh change invalidates any pending redo
 	return nil
 }
 
@@ -206,6 +211,7 @@ func (s *Store) Append(name, line string) error {
 		return err
 	}
 	s.undo = snap
+	s.redo = nil // a fresh change invalidates any pending redo
 	return nil
 }
 
@@ -235,6 +241,7 @@ func (s *Store) Transfer(srcName string, id int, destName string, transform func
 		return err
 	}
 	s.undo = snap
+	s.redo = nil // a fresh change invalidates any pending redo
 	return nil
 }
 
@@ -314,18 +321,19 @@ func (s *Store) CanUndo() bool {
 	return s.undo != nil
 }
 
-// Undo restores every managed file to its content from just before the last
-// mutation, then clears the undo point — undo is single-level and not itself
-// undoable. It returns ErrNothingToUndo if no mutation has been recorded. The
-// pre-undo state is itself backed up (rawWriteLocked snapshots before
-// overwriting), so even an unwanted undo is recoverable from backups/.
-func (s *Store) Undo() error {
+// CanRedo reports whether the last action was an undo that can be reapplied.
+func (s *Store) CanRedo() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.undo == nil {
-		return ErrNothingToUndo
-	}
-	for name, fs := range s.undo.files {
+	return s.redo != nil
+}
+
+// restoreLocked writes a snapshot back over the managed files, recreating or
+// removing files as needed. Caller holds the lock. Each overwrite is itself
+// backed up (rawWriteLocked snapshots first), so even an unwanted restore is
+// recoverable from backups/.
+func (s *Store) restoreLocked(snap *snapshot) error {
+	for name, fs := range snap.files {
 		if !fs.existed {
 			if err := os.Remove(filepath.Join(s.dir, name)); err != nil && !os.IsNotExist(err) {
 				return err
@@ -336,7 +344,43 @@ func (s *Store) Undo() error {
 			return err
 		}
 	}
+	return nil
+}
+
+// Undo restores every managed file to its content from just before the last
+// mutation. The pre-undo state is captured as the redo point first, so a single
+// (e.g. accidental) undo can be reapplied with Redo. Returns ErrNothingToUndo if
+// no mutation has been recorded.
+func (s *Store) Undo() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.undo == nil {
+		return ErrNothingToUndo
+	}
+	redo := s.takeSnapshotLocked() // current (post-mutation) state, to redo to
+	if err := s.restoreLocked(s.undo); err != nil {
+		return err
+	}
 	s.undo = nil
+	s.redo = redo
+	return nil
+}
+
+// Redo reapplies the change that the last Undo rolled back, and re-arms Undo so
+// the pair toggles. Any new mutation clears the redo point. Returns
+// ErrNothingToRedo if the last action wasn't an undo.
+func (s *Store) Redo() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.redo == nil {
+		return ErrNothingToRedo
+	}
+	undo := s.takeSnapshotLocked() // current (undone) state, to undo back to
+	if err := s.restoreLocked(s.redo); err != nil {
+		return err
+	}
+	s.redo = nil
+	s.undo = undo
 	return nil
 }
 

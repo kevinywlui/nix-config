@@ -22,14 +22,12 @@
     <a href="/help">Help</a>
   </nav>
 </header>
-<main>{{end}}
+<main>
+{{if .Undo}}<form method="post" action="/undo" class="actionbar"><button type="submit">↶ Undo that</button></form>{{end}}
+{{if .Redo}}<form method="post" action="/redo" class="actionbar redo"><button type="submit">↷ Redo that</button></form>{{end}}
+{{end}}
 
 {{define "foot"}}</main>
-{{if .CanUndo}}
-<form method="post" action="/undo" class="undobar">
-  <button type="submit" title="Undo the last change">↶ Undo last change</button>
-</form>
-{{end}}
 <nav class="tabbar">
   <a href="/capture">＋<span>Capture</span></a>
   <a href="/process">⇄<span>Process</span></a>

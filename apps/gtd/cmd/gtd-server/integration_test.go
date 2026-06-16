@@ -108,7 +108,7 @@ func TestClarifyValidation(t *testing.T) {
 
 func TestMutatingEndpointsRejectGET(t *testing.T) {
 	srv, _ := newTestServer(t)
-	for _, p := range []string{"/process/do", "/undo", "/restore"} {
+	for _, p := range []string{"/process/do", "/undo", "/redo", "/restore"} {
 		if rec := do(t, srv, "GET", p, nil); rec.Code != http.StatusMethodNotAllowed {
 			t.Errorf("GET %s = %d, want 405", p, rec.Code)
 		}
@@ -306,20 +306,28 @@ func TestEditRejectsLineInjection(t *testing.T) {
 	}
 }
 
-// Undo rolls back the last web mutation and the Undo bar appears only while
-// there's something to roll back.
-func TestUndoFlow(t *testing.T) {
+// Undo is transient and scoped: it's offered only on the page you land on right
+// after an action (the redirect arms ?undo=1), not as a persistent control that
+// follows you around to be mis-tapped.
+func TestUndoIsTransientAndScoped(t *testing.T) {
 	srv, store := newTestServer(t)
 
-	// Nothing captured yet: the page carries no Undo bar.
-	if b := do(t, srv, "GET", "/capture", nil).Body.String(); strings.Contains(b, "Undo last change") {
-		t.Fatal("Undo bar shown with nothing to undo")
+	rec := do(t, srv, "POST", "/capture", url.Values{"text": {"oops"}})
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "undo=1") {
+		t.Fatalf("capture redirect should arm undo; Location=%q", loc)
 	}
 
-	do(t, srv, "POST", "/capture", url.Values{"text": {"oops"}})
-	// After a mutation the next page shows the Undo affordance.
-	if b := do(t, srv, "GET", "/capture", nil).Body.String(); !strings.Contains(b, "Undo last change") {
-		t.Fatal("Undo bar missing after a capture")
+	// The post-action page (carrying the flag) offers Undo...
+	if b := do(t, srv, "GET", "/capture?ok=1&undo=1", nil).Body.String(); !strings.Contains(b, "Undo that") {
+		t.Fatal("undo control missing on the post-action page")
+	}
+	// ...but a plain navigation does NOT, even though the store could still undo.
+	// This is the fix: no persistent button sitting in the thumb zone.
+	if !store.CanUndo() {
+		t.Fatal("precondition: the store should still be able to undo")
+	}
+	if b := do(t, srv, "GET", "/next", nil).Body.String(); strings.Contains(b, "Undo that") {
+		t.Fatal("undo control must not persist onto unrelated pages")
 	}
 
 	if rec := do(t, srv, "POST", "/undo", url.Values{}); rec.Code != http.StatusSeeOther {
@@ -328,9 +336,35 @@ func TestUndoFlow(t *testing.T) {
 	if active, _ := store.Read(todotxt.ActiveFile); len(active) != 0 {
 		t.Fatalf("undo did not remove the captured item: %v", active)
 	}
-	// Undo is single-level: the bar is gone again.
-	if b := do(t, srv, "GET", "/capture", nil).Body.String(); strings.Contains(b, "Undo last change") {
-		t.Error("Undo bar still shown after undoing")
+}
+
+// An accidental undo is one tap to recover: undo arms a redo, and redo reapplies
+// the change and re-arms undo (the two toggle).
+func TestUndoRedoRoundTrip(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"keep me"}})
+
+	rec := do(t, srv, "POST", "/undo", url.Values{})
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "redo=1") {
+		t.Fatalf("undo should arm redo; Location=%q", loc)
+	}
+	if active, _ := store.Read(todotxt.ActiveFile); len(active) != 0 {
+		t.Fatalf("undo should remove the item: %v", active)
+	}
+
+	// A page carrying redo=1 offers Redo and not Undo (undo is spent).
+	b := do(t, srv, "GET", "/?redo=1", nil).Body.String()
+	if !strings.Contains(b, "Redo that") || strings.Contains(b, "Undo that") {
+		t.Fatalf("redo page should show only Redo; got %s", b)
+	}
+
+	rec = do(t, srv, "POST", "/redo", url.Values{})
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "undo=1") {
+		t.Fatalf("redo should re-arm undo; Location=%q", loc)
+	}
+	active, _ := store.Read(todotxt.ActiveFile)
+	if len(active) != 1 || !strings.Contains(active[0].Text, "keep me") {
+		t.Fatalf("redo should bring the item back: %v", active)
 	}
 }
 

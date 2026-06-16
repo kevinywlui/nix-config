@@ -72,6 +72,8 @@ func main() {
 		err = edit(args[0], strings.Join(args[1:], " "))
 	case "undo":
 		err = undo()
+	case "redo":
+		err = redo()
 	case "log", "done-list":
 		err = list("done", "", "")
 	case "restore":
@@ -105,6 +107,7 @@ usage:
   gtd done <id>         complete the task with that id
   gtd edit <id> <text>  replace the wording of the task with that id
   gtd undo              roll back the last change
+  gtd redo              reapply the change you just undid
   gtd log               list completed tasks
   gtd restore <id>      bring a completed task back to your active list
 
@@ -274,6 +277,19 @@ func undo() error {
 		return httpErr(resp)
 	}
 	fmt.Println("undone.")
+	return nil
+}
+
+func redo() error {
+	resp, err := request(http.MethodPost, "/api/redo", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return httpErr(resp)
+	}
+	fmt.Println("redone.")
 	return nil
 }
 
