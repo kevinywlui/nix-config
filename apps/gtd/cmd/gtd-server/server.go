@@ -76,6 +76,14 @@ func (s *server) activeItems() ([]gtd.Item, error) {
 	return gtd.Items(tasks), nil
 }
 
+// reverseItems flips a slice in place (newest-appended first) without disturbing
+// each Item's ID, so a reversed done list still restores by its true file index.
+func reverseItems(items []gtd.Item) {
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
+}
+
 func (s *server) render(w http.ResponseWriter, name string, data any) {
 	s.renderStatus(w, http.StatusOK, name, data)
 }
@@ -268,13 +276,15 @@ func (s *server) handleCapture(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		text := strings.TrimSpace(r.FormValue("text"))
+		dest := "/capture" // a blank submit is a no-op, not a "Captured." success
 		if text != "" {
 			if err := s.capture(text); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
+			dest = "/capture?ok=1"
 		}
-		http.Redirect(w, r, "/capture?ok=1", http.StatusSeeOther)
+		http.Redirect(w, r, dest, http.StatusSeeOther)
 		return
 	}
 	inbox := 0
@@ -320,9 +330,11 @@ func (s *server) handleProcess(w http.ResponseWriter, r *http.Request) {
 // of dumping them on a plain error page.
 func processData(inbox []gtd.Item, errMsg, decision string) map[string]any {
 	it := inbox[0]
+	disp := it.Task
+	disp.RemoveContext(gtd.ContextInbox)
 	return map[string]any{
 		"Item":      it,
-		"Text":      strings.TrimSpace(strings.ReplaceAll(it.Task.DisplayText(), "@inbox", "")),
+		"Text":      disp.DisplayText(),
 		"Remaining": len(inbox),
 		"Today":     today(),
 		"Error":     errMsg,
@@ -571,9 +583,7 @@ func (s *server) handleDone(w http.ResponseWriter, r *http.Request) {
 	// first while keeping each Item's ID as its true done-file index so Restore
 	// targets the right line.
 	items := gtd.Items(tasks)
-	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
-		items[i], items[j] = items[j], items[i]
-	}
+	reverseItems(items)
 	s.render(w, "done", map[string]any{"Items": items})
 }
 
@@ -814,6 +824,7 @@ func (s *server) apiTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out = gtd.Items(done)
+		reverseItems(out) // newest-first, matching the web Done screen
 	default:
 		http.Error(w, "unknown view", 400)
 		return

@@ -473,6 +473,46 @@ func TestRestoreContextlessGoesToInbox(t *testing.T) {
 	}
 }
 
+// A blank capture is a no-op and must not flash "Captured." — the redirect
+// drops the ok=1 marker.
+func TestCaptureEmptyIsNoOp(t *testing.T) {
+	srv, store := newTestServer(t)
+	rec := do(t, srv, "POST", "/capture", url.Values{"text": {"   "}})
+	if loc := rec.Header().Get("Location"); loc != "/capture" {
+		t.Errorf("empty capture redirect = %q, want /capture (no ok=1)", loc)
+	}
+	if active, _ := store.Read(todotxt.ActiveFile); len(active) != 0 {
+		t.Errorf("empty capture should add nothing, got %v", active)
+	}
+}
+
+// The Clarify screen strips @inbox cleanly (token-exact, no leftover double
+// space) even when the marker sits mid-description.
+func TestProcessStripsInboxCleanly(t *testing.T) {
+	srv, _ := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"email @inbox boss"}})
+	b := do(t, srv, "GET", "/process", nil).Body.String()
+	if !strings.Contains(b, "email boss") {
+		t.Errorf("expected cleanly-stripped 'email boss'; got %s", b)
+	}
+	if strings.Contains(b, "email  boss") {
+		t.Error("leftover double space from substring strip")
+	}
+}
+
+// The done API view matches the web Done screen: newest completion first.
+func TestAPIDoneNewestFirst(t *testing.T) {
+	srv, _ := newTestServer(t)
+	for _, txt := range []string{"first", "second"} {
+		do(t, srv, "POST", "/capture", url.Values{"text": {txt}})
+		do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"donow"}})
+	}
+	b := do(t, srv, "GET", "/api/tasks?view=done", nil).Body.String()
+	if strings.Index(b, "second") > strings.Index(b, "first") {
+		t.Errorf("done API should be newest-first (second before first); got %s", b)
+	}
+}
+
 func TestAPIBadInputs(t *testing.T) {
 	srv, _ := newTestServer(t)
 
