@@ -60,7 +60,12 @@ todo.txt line, and it's hidden from the displayed text.
 
 ```
 cd apps/gtd
-go test ./...                       # parser + GTD view unit tests
+go test ./...                       # unit, integration, CLI, concurrency & fuzz-seed tests
+go test -race ./...                 # exercise the store's locking (the concurrency
+                                    # tests are written for this; needs CGO, so it's a
+                                    # dev-only command — the Nix build gate stays CGO-free)
+go test -run=Fuzz ./internal/todotxt              # run the fuzz seed corpora as plain tests
+go test -fuzz=FuzzParseRoundTrip ./internal/todotxt   # actively fuzz the parser (Ctrl-C to stop)
 go run ./cmd/gtd-server -dir /tmp/gtd -addr 127.0.0.1:8730
 GTD_ENDPOINT=http://127.0.0.1:8730 go run ./cmd/gtd add "try it out"
 ```

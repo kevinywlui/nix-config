@@ -90,6 +90,42 @@ func TestUndoRollsBackLastMutation(t *testing.T) {
 	}
 }
 
+// TestNoteKeyRejectsTraversal locks in the noteKeyRe guard: a key read from a
+// (user-editable) note: tag must never be able to escape the notes/ directory.
+// Without this, loosening the regex would silently reopen a path-traversal hole.
+func TestNoteKeyRejectsTraversal(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := New(dir)
+
+	// Traversal is blocked by disallowing the path separator (and whitespace/
+	// control/empty); dots alone are fine since key+".txt" can't escape the dir.
+	bad := []string{"../escape", "a/b", "", "a b", "x\ny", "foo/../bar", "/abs"}
+	for _, k := range bad {
+		if err := s.WriteNote(k, "data"); err == nil {
+			t.Errorf("WriteNote(%q) should be rejected", k)
+		}
+		if _, err := s.ReadNote(k); err == nil {
+			t.Errorf("ReadNote(%q) should be rejected", k)
+		}
+	}
+
+	// Nothing should have been written into (or above) the notes dir.
+	entries, _ := os.ReadDir(filepath.Join(dir, notesDir))
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".tmp-") {
+			t.Errorf("unexpected file in notes dir after rejected writes: %s", e.Name())
+		}
+	}
+
+	// A valid key still round-trips.
+	if err := s.WriteNote("20260615-150405.0", "hello"); err != nil {
+		t.Fatalf("valid WriteNote: %v", err)
+	}
+	if got, _ := s.ReadNote("20260615-150405.0"); got != "hello" {
+		t.Errorf("ReadNote = %q, want hello", got)
+	}
+}
+
 func TestAppendPreservesExistingContent(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := New(dir)
