@@ -30,3 +30,26 @@
     if (form.requestSubmit) form.requestSubmit(); else form.submit();
   });
 })();
+
+// A "Today" button beside every date field, so the common case (defer/due =
+// today) is one tap instead of spinning a date picker. Progressive enhancement:
+// without JS the native picker still works and no dead button is rendered. We
+// deliberately don't default the fields to today — most actions want no date.
+(function () {
+  function todayISO() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + m + "-" + day;
+  }
+  document.querySelectorAll('input[type="date"]').forEach(function (input) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "today";
+    btn.textContent = "Today";
+    btn.addEventListener("click", function () {
+      input.value = todayISO();
+    });
+    input.insertAdjacentElement("afterend", btn);
+  });
+})();

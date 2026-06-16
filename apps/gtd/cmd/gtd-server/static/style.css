@@ -82,6 +82,9 @@ button:active { transform: translateY(1px); }
   padding: .9rem; margin: -.2rem 0 .7rem; }
 .panel.show { display: block; }
 .panel label { display: block; font-size: .85rem; color: var(--sub); margin-bottom: .6rem; }
+/* "Today" quick-set beside date inputs (injected by app.js) */
+.today { font-size: .78rem; padding: .35rem .7rem; margin-top: .4rem;
+  background: var(--panel); color: var(--sub); font-weight: 600; }
 .panel .row { display: flex; gap: .6rem; }
 .panel .row label { flex: 1; }
 .clarify > button { width: 100%; margin-top: .8rem; }
