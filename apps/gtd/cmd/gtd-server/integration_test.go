@@ -214,3 +214,61 @@ func TestAPIBadInputs(t *testing.T) {
 		t.Errorf("api capture no-auth = %d, want 403", rec.Code)
 	}
 }
+
+// The capture screen surfaces how many items are waiting to be processed.
+func TestCaptureShowsInboxCount(t *testing.T) {
+	srv, _ := newTestServer(t)
+	if b := do(t, srv, "GET", "/capture", nil).Body.String(); !strings.Contains(b, "Inbox empty") {
+		t.Fatalf("empty capture page should say inbox is empty; got %s", b)
+	}
+	do(t, srv, "POST", "/capture", url.Values{"text": {"one"}})
+	do(t, srv, "POST", "/capture", url.Values{"text": {"two"}})
+	b := do(t, srv, "GET", "/capture", nil).Body.String()
+	if !strings.Contains(b, "<b>2</b> items waiting to be processed") {
+		t.Fatalf("capture page should show the inbox count of 2; got %s", b)
+	}
+}
+
+// A missed required field re-renders the Clarify form inline (400 + HTML +
+// message + the chosen decision preselected), not a plain error page.
+func TestClarifyErrorRendersInline(t *testing.T) {
+	srv, _ := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"Call the dentist"}})
+
+	rec := do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}})
+	if rec.Code != 400 {
+		t.Fatalf("next-without-context = %d, want 400", rec.Code)
+	}
+	b := rec.Body.String()
+	if !strings.Contains(b, "Pick a context") {
+		t.Errorf("missing the inline validation message; got %s", b)
+	}
+	if !strings.Contains(b, "Clarify") || !strings.Contains(b, "Call the dentist") {
+		t.Errorf("should re-render the full Clarify page for the same item; got %s", b)
+	}
+	// The "next" radio must come back preselected so its panel reopens.
+	if !strings.Contains(b, `value="next" checked`) {
+		t.Errorf("chosen decision should be preserved as checked; got %s", b)
+	}
+}
+
+// The raw view shows the on-disk file verbatim and rejects unknown selectors.
+func TestRawView(t *testing.T) {
+	srv, _ := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"buy milk"}})
+
+	rec := do(t, srv, "GET", "/raw", nil)
+	if rec.Code != 200 {
+		t.Fatalf("GET /raw = %d, want 200", rec.Code)
+	}
+	b := rec.Body.String()
+	if !strings.Contains(b, "buy milk") || !strings.Contains(b, "@inbox") {
+		t.Errorf("raw todo.txt should contain the captured line verbatim; got %s", b)
+	}
+	if !strings.Contains(b, "done.txt") { // sibling-file tabs are present
+		t.Errorf("raw view should offer the sibling-file tabs; got %s", b)
+	}
+	if rec := do(t, srv, "GET", "/raw?file=bogus", nil); rec.Code != 400 {
+		t.Errorf("unknown file selector = %d, want 400", rec.Code)
+	}
+}

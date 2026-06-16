@@ -6,16 +6,18 @@ multi-step <b>project</b>? Decide once, here.</p>
 
 <blockquote class="item">{{.Text}}</blockquote>
 
+{{if .Error}}<p class="flash err" role="alert">{{.Error}}</p>{{end}}
+
 <form method="post" action="/process/do" class="clarify">
   <input type="hidden" name="id" value="{{.Item.ID}}">
 
   <fieldset>
     <legend>1 · Is it actionable?</legend>
 
-    <label class="opt"><input type="radio" name="decision" value="donow">
+    <label class="opt"><input type="radio" name="decision" value="donow"{{if eq .Decision "donow"}} checked{{end}}>
       <span><b>Do it now</b> — it'll take under 2 minutes. (Then mark it done.)</span></label>
 
-    <label class="opt"><input type="radio" name="decision" value="next">
+    <label class="opt"><input type="radio" name="decision" value="next"{{if eq .Decision "next"}} checked{{end}}>
       <span><b>It's a single next action</b> — one physical step I'll do myself.</span></label>
     <div class="panel" data-for="next">
       <label>Next action context (where/with what)
@@ -28,7 +30,7 @@ multi-step <b>project</b>? Decide once, here.</p>
       that's the "hard landscape." Most actions need no date.</p>
     </div>
 
-    <label class="opt"><input type="radio" name="decision" value="project">
+    <label class="opt"><input type="radio" name="decision" value="project"{{if eq .Decision "project"}} checked{{end}}>
       <span><b>It's a project</b> — it takes more than one step to finish.</span></label>
     <div class="panel" data-for="project">
       <label>Short project tag<input type="text" name="project" placeholder="KitchenReno"></label>
@@ -38,20 +40,20 @@ multi-step <b>project</b>? Decide once, here.</p>
       first concrete action on a context list so it can actually move.</p>
     </div>
 
-    <label class="opt"><input type="radio" name="decision" value="waiting">
+    <label class="opt"><input type="radio" name="decision" value="waiting"{{if eq .Decision "waiting"}} checked{{end}}>
       <span><b>Delegate / waiting</b> — someone else has the ball.</span></label>
     <div class="panel" data-for="waiting">
       <label>Waiting on whom<input type="text" name="person" placeholder="alice"></label>
       <label>Follow up on (optional)<input type="date" name="followup"></label>
     </div>
 
-    <label class="opt"><input type="radio" name="decision" value="someday">
+    <label class="opt"><input type="radio" name="decision" value="someday"{{if eq .Decision "someday"}} checked{{end}}>
       <span><b>Someday / maybe</b> — not now, but I don't want to forget it.</span></label>
 
-    <label class="opt"><input type="radio" name="decision" value="reference">
+    <label class="opt"><input type="radio" name="decision" value="reference"{{if eq .Decision "reference"}} checked{{end}}>
       <span><b>Reference</b> — no action, but worth keeping.</span></label>
 
-    <label class="opt"><input type="radio" name="decision" value="trash">
+    <label class="opt"><input type="radio" name="decision" value="trash"{{if eq .Decision "trash"}} checked{{end}}>
       <span><b>Trash</b> — I don't need this.</span></label>
   </fieldset>
 

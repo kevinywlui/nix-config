@@ -49,6 +49,22 @@ func (s *Store) Read(name string) ([]Task, error) {
 	return s.readLocked(name)
 }
 
+// Raw returns the verbatim on-disk bytes of the named file (nil if missing),
+// for a read-only "show me the actual todo.txt" view. It does not parse, so
+// what the caller sees is exactly what any other todo.txt tool would read.
+func (s *Store) Raw(name string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := os.ReadFile(filepath.Join(s.dir, name))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return data, nil
+}
+
 func (s *Store) readLocked(name string) ([]Task, error) {
 	data, err := os.ReadFile(filepath.Join(s.dir, name))
 	if err != nil {

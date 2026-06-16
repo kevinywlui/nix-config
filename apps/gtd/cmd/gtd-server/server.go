@@ -45,6 +45,7 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.HandleFunc("/contexts", s.handleContexts)
 	s.mux.HandleFunc("/waiting", s.handleWaiting)
 	s.mux.HandleFunc("/projects", s.handleProjects)
+	s.mux.HandleFunc("/raw", s.handleRaw)
 	s.mux.HandleFunc("/done", s.handleDone)
 
 	s.mux.Handle("/static/", http.FileServer(http.FS(staticFS)))
@@ -68,12 +69,20 @@ func (s *server) activeItems() ([]gtd.Item, error) {
 }
 
 func (s *server) render(w http.ResponseWriter, name string, data any) {
+	s.renderStatus(w, http.StatusOK, name, data)
+}
+
+// renderStatus renders a template with an explicit status code. The status is
+// written after the body buffers successfully, so a template error still yields
+// a clean 500 rather than a half-written page with the wrong code.
+func (s *server) renderStatus(w http.ResponseWriter, code int, name string, data any) {
 	var buf bytes.Buffer
 	if err := s.tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(code)
 	buf.WriteTo(w)
 }
 
@@ -202,7 +211,14 @@ func (s *server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/capture?ok=1", http.StatusSeeOther)
 		return
 	}
-	s.render(w, "capture", map[string]any{"Saved": r.URL.Query().Get("ok") == "1"})
+	inbox := 0
+	if items, err := s.activeItems(); err == nil {
+		inbox = len(gtd.Inbox(items))
+	}
+	s.render(w, "capture", map[string]any{
+		"Saved": r.URL.Query().Get("ok") == "1",
+		"Inbox": inbox,
+	})
 }
 
 // capture appends a raw inbox item with today's creation date.
@@ -226,13 +242,41 @@ func (s *server) handleProcess(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "process-empty", nil)
 		return
 	}
+	s.render(w, "process", processData(inbox, "", ""))
+}
+
+// processData builds the Clarify view model for the first inbox item. err and
+// decision are non-empty only on a failed submission we're re-rendering: err is
+// shown as an inline banner and decision re-selects the radio the user picked,
+// so a missed field (e.g. a forgotten context) reopens the right panel instead
+// of dumping them on a plain error page.
+func processData(inbox []gtd.Item, errMsg, decision string) map[string]any {
 	it := inbox[0]
-	s.render(w, "process", map[string]any{
+	return map[string]any{
 		"Item":      it,
 		"Text":      strings.TrimSpace(strings.ReplaceAll(it.Task.Text, "@inbox", "")),
 		"Remaining": len(inbox),
 		"Today":     today(),
-	})
+		"Error":     errMsg,
+		"Decision":  decision,
+	}
+}
+
+// processError re-renders the Clarify page for the current first inbox item with
+// an inline validation message and a 400, preserving the chosen decision. Used
+// instead of http.Error so a user mistake stays inside the app's UI.
+func (s *server) processError(w http.ResponseWriter, msg, decision string) {
+	items, err := s.activeItems()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	inbox := gtd.Inbox(items)
+	if len(inbox) == 0 { // item got processed elsewhere meanwhile
+		s.render(w, "process-empty", nil)
+		return
+	}
+	s.renderStatus(w, http.StatusBadRequest, "process", processData(inbox, msg, decision))
 }
 
 func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
@@ -263,7 +307,7 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 	case "next":
 		ctx := f("context")
 		if ctx == "" {
-			http.Error(w, "a context is required for a next action", 400)
+			s.processError(w, "Pick a context — a next action has to live on a context list (calls, computer, home…) so you can find it when you're there.", "next")
 			return
 		}
 		err = s.replaceActive(id, func(t *todotxt.Task) {
@@ -282,7 +326,7 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 	case "project":
 		proj, naText, naCtx := f("project"), f("na_text"), f("na_context")
 		if proj == "" || naText == "" || naCtx == "" {
-			http.Error(w, "project needs a name, a next action, and a context", 400)
+			s.processError(w, "A project needs three things: a short tag, its very next physical action, and a context for that action.", "project")
 			return
 		}
 		err = s.store.Mutate(todotxt.ActiveFile, func(ts []todotxt.Task) ([]todotxt.Task, error) {
@@ -297,7 +341,7 @@ func (s *server) handleProcessDo(w http.ResponseWriter, r *http.Request) {
 			return append(ts, na), nil
 		})
 	default:
-		http.Error(w, "unknown decision", 400)
+		s.processError(w, "Choose what this item is first — pick one of the options above.", f("decision"))
 		return
 	}
 	if err != nil {
@@ -351,6 +395,45 @@ func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, "projects", map[string]any{"Projects": gtd.Projects(items, today())})
+}
+
+// rawFiles maps the ?file= selector to the on-disk file, in display order.
+var rawFiles = []struct{ Key, Name string }{
+	{"todo", todotxt.ActiveFile},
+	{"done", todotxt.DoneFile},
+	{"someday", todotxt.SomedayFile},
+	{"reference", todotxt.ReferenceFile},
+}
+
+// handleRaw shows the verbatim on-disk todo.txt (and its siblings) read-only, so
+// you can see and trust exactly what the app is writing. It's GET-only and never
+// mutates, so it needs no CSRF check.
+func (s *server) handleRaw(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("file")
+	if key == "" {
+		key = "todo"
+	}
+	name := ""
+	for _, f := range rawFiles {
+		if f.Key == key {
+			name = f.Name
+		}
+	}
+	if name == "" {
+		http.Error(w, "unknown file", http.StatusBadRequest)
+		return
+	}
+	data, err := s.store.Raw(name)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	s.render(w, "raw", map[string]any{
+		"Tabs":    rawFiles,
+		"File":    key,
+		"Name":    name,
+		"Content": string(data),
+	})
 }
 
 func (s *server) handleDone(w http.ResponseWriter, r *http.Request) {

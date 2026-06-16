@@ -1,0 +1,12 @@
+{{define "raw"}}{{template "head" .}}
+<h1>Files <span class="badge">{{.Name}}</span></h1>
+<p class="coach">The plain todo.txt files your tasks actually live in, on disk in
+<code>/var/lib/gtd</code> — exactly what any other todo.txt tool would read. This
+view is read-only; edit through the app so writes stay atomic and backed up.</p>
+
+<nav class="rawtabs">
+  {{range .Tabs}}<a href="/raw?file={{.Key}}"{{if eq .Key $.File}} class="on"{{end}}>{{.Name}}</a>{{end}}
+</nav>
+
+{{if .Content}}<pre class="raw">{{.Content}}</pre>{{else}}<p class="empty">(empty)</p>{{end}}
+{{template "foot" .}}{{end}}
