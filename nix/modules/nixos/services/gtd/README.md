@@ -14,34 +14,44 @@ conventions, the HTTP/JSON API, and how to run the tests.
 - A hardened `gtd.service` running `gtd-server` as the `gtd` system user, bound
   to `127.0.0.1:${my.ports.gtd}` (default 8730), state in `/var/lib/gtd`.
 - A best-effort `gtd-tailscale-serve.service` that publishes it on the tailnet
-  over HTTPS (see the caveat below).
+  as the **`gtd` Tailscale Service** over HTTPS (see the caveat below).
 - The `gtd` CLI is on every host's PATH (added to `cliTools` in
   `profiles/core.nix`).
 
 ## Reaching it
 
-- **Phone / browser:** `https://t480.<your-tailnet>.ts.net/` once tailscale serve
-  is active. Add it to your home screen — it ships a PWA manifest.
+It is published as a **Tailscale Service** (`svc:gtd`), which gives it a distinct
+hostname of its own rather than living under the t480 node's name:
+
+- **Phone / browser:** `https://gtd.<your-tailnet>.ts.net/` once the service is
+  served. Add it to your home screen — it ships a PWA manifest.
 - **CLI on the t480:** works out of the box (`gtd add "…"`, `gtd next`, …) against
   `http://127.0.0.1:8730`.
-- **CLI on fw13:** set `GTD_ENDPOINT` to the tailnet URL, e.g. in your shell env:
-  `export GTD_ENDPOINT=https://t480.<your-tailnet>.ts.net`.
+- **CLI on fw13:** set `GTD_ENDPOINT` to the service URL, e.g. in your shell env:
+  `export GTD_ENDPOINT=https://gtd.<your-tailnet>.ts.net`.
 
 ## tailscale serve is NOT declarative
 
 NixOS has no declarative option for `tailscale serve`, so `gtd-tailscale-serve`
-runs the imperative command in a oneshot after `tailscaled`. It only succeeds
-once the node is logged in **and** HTTPS certs are enabled for the tailnet
-(Tailscale admin → DNS → enable MagicDNS + HTTPS Certificates). If it shows
-failed in `systemctl status gtd-tailscale-serve`, enable HTTPS for the tailnet
-and re-run `nh os switch`, or set `services.gtd.tailscaleServe = false` and run
-once by hand:
+runs the imperative command in a oneshot after `tailscaled`. It publishes the
+loopback server as the `gtd` Tailscale Service (`--service=svc:gtd`; `--bg`
+defaults to true when `--service` is set). It only succeeds once:
+
+1. the node is logged in **and** HTTPS certs are enabled for the tailnet
+   (Tailscale admin → DNS → enable MagicDNS + HTTPS Certificates), and
+2. the `gtd` service exists and **this node is approved as its proxy** in the
+   Tailscale admin console — a one-time setup the oneshot cannot do for you.
+
+If it shows failed in `systemctl status gtd-tailscale-serve`, complete the steps
+above and re-run `nh os switch`, or set `services.gtd.tailscaleServe = false` and
+run once by hand (this is the exact command the unit runs, minus `sudo`):
 
 ```
-tailscale serve --bg http://127.0.0.1:8730
+sudo tailscale serve --service=svc:gtd http://127.0.0.1:8730
 ```
 
-(The exact flags vary across tailscale versions; adjust if your CLI differs.)
+(The exact flags vary across tailscale versions; adjust if your CLI differs.
+`tailscale serve status` shows the active config.)
 
 ## Data & safety
 

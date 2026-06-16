@@ -21,13 +21,16 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Publish the server on the tailnet over HTTPS via `tailscale serve`.
-        tailscale serve is NOT a declarative NixOS setting, so this runs the
-        equivalent imperative command in a oneshot after tailscaled is up.
-        It only succeeds once the node is logged in and HTTPS is enabled for
-        the tailnet (Tailscale admin → DNS → HTTPS Certificates / MagicDNS).
-        If the flags differ for your tailscale version, set this false and run
-        `tailscale serve --bg http://127.0.0.1:${toString port}` by hand once.
+        Publish the server on the tailnet over HTTPS as the `gtd` Tailscale
+        Service (reachable at gtd.<tailnet>.ts.net). tailscale serve is NOT a
+        declarative NixOS setting, so this runs the equivalent imperative
+        command in a oneshot after tailscaled is up. It only succeeds once the
+        node is logged in, HTTPS is enabled for the tailnet (Tailscale admin →
+        DNS → HTTPS Certificates / MagicDNS), and the `gtd` service exists with
+        this node approved as its proxy in the admin console. If the flags
+        differ for your tailscale version, set this false and run
+        `tailscale serve --service=svc:gtd http://127.0.0.1:${toString port}`
+        by hand once.
       '';
     };
   };
@@ -78,6 +81,11 @@ in
     # It is gated to not block the boot transaction and simply fails (visibly,
     # via `systemctl status`) if the tailnet isn't ready — re-run by switching
     # again or invoking the command manually once.
+    #
+    # Published as the `gtd` Tailscale Service (svc:gtd) so it gets its own
+    # hostname (gtd.<tailnet>.ts.net) rather than living under the node name.
+    # --bg defaults to true when --service is set. Requires the service to be
+    # created and this node approved as its proxy in the admin console first.
     systemd.services.gtd-tailscale-serve = lib.mkIf cfg.tailscaleServe {
       description = "Publish gtd on the tailnet via tailscale serve";
       after = [ "tailscaled.service" "gtd.service" ];
@@ -86,7 +94,7 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = "${tailscale}/bin/tailscale serve --bg http://127.0.0.1:${toString port}";
+        ExecStart = "${tailscale}/bin/tailscale serve --service=svc:gtd http://127.0.0.1:${toString port}";
       };
     };
   };
