@@ -58,6 +58,7 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.Handle("/static/", http.FileServer(http.FS(staticFS)))
 
 	s.mux.HandleFunc("/api/tasks", s.apiTasks)
+	s.mux.HandleFunc("/api/projects", s.apiProjects)
 	s.mux.HandleFunc("/api/capture", s.apiCapture)
 	s.mux.HandleFunc("/api/done", s.apiDone)
 	s.mux.HandleFunc("/api/edit", s.apiEdit)
@@ -967,6 +968,36 @@ func (s *server) apiTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, toAPI(out))
+}
+
+type apiProject struct {
+	Name     string `json:"name"`
+	Actions  int    `json:"next_actions"`
+	Waiting  int    `json:"waiting"`
+	Deferred int    `json:"deferred"`
+	Blocked  int    `json:"blocked"`
+	Stalled  bool   `json:"stalled"`
+}
+
+func (s *server) apiProjects(w http.ResponseWriter, r *http.Request) {
+	items, err := s.activeItems()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	projs := gtd.Projects(items, today())
+	out := make([]apiProject, len(projs))
+	for i, p := range projs {
+		out[i] = apiProject{
+			Name:     p.Name,
+			Actions:  p.Actions,
+			Waiting:  p.Waiting,
+			Deferred: p.Deferred,
+			Blocked:  p.Blocked,
+			Stalled:  p.Stalled(),
+		}
+	}
+	writeJSON(w, out)
 }
 
 func (s *server) apiCapture(w http.ResponseWriter, r *http.Request) {

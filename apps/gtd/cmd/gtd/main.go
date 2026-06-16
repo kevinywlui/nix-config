@@ -40,17 +40,24 @@ func main() {
 	case "add", "capture":
 		err = add(strings.Join(args, " "))
 	case "inbox":
-		err = list("inbox", "")
+		err = list("inbox", "", "")
 	case "next":
-		ctx := ""
+		// An argument is a context, or +Project to filter by project.
+		ctx, proj := "", ""
 		if len(args) > 0 {
-			ctx = args[0]
+			if strings.HasPrefix(args[0], "+") {
+				proj = strings.TrimPrefix(args[0], "+")
+			} else {
+				ctx = args[0]
+			}
 		}
-		err = list("next", ctx)
+		err = list("next", ctx, proj)
 	case "waiting":
-		err = list("waiting", "")
+		err = list("waiting", "", "")
 	case "ls", "all":
-		err = list("all", "")
+		err = list("all", "", "")
+	case "projects":
+		err = projects()
 	case "done":
 		if len(args) != 1 {
 			err = fmt.Errorf("usage: gtd done <id>")
@@ -66,7 +73,7 @@ func main() {
 	case "undo":
 		err = undo()
 	case "log", "done-list":
-		err = list("done", "")
+		err = list("done", "", "")
 	case "restore":
 		if len(args) != 1 {
 			err = fmt.Errorf("usage: gtd restore <id>")
@@ -91,8 +98,9 @@ func usage() {
 usage:
   gtd add <text...>     capture a thought into your inbox
   gtd inbox             list unprocessed items
-  gtd next [context]    list next actions, optionally by @context
+  gtd next [ctx|+proj]  list next actions, optionally by @context or +project
   gtd waiting           list delegated / waiting-for items
+  gtd projects          list projects and their status
   gtd ls                list all active tasks
   gtd done <id>         complete the task with that id
   gtd edit <id> <text>  replace the wording of the task with that id
@@ -134,10 +142,13 @@ func add(text string) error {
 	return nil
 }
 
-func list(view, context string) error {
+func list(view, context, project string) error {
 	q := url.Values{"view": {view}}
 	if context != "" {
 		q.Set("context", context)
+	}
+	if project != "" {
+		q.Set("project", project)
 	}
 	resp, err := request(http.MethodGet, "/api/tasks?"+q.Encode(), nil)
 	if err != nil {
@@ -161,6 +172,54 @@ func list(view, context string) error {
 			line += "  (due " + t.Due + ")"
 		}
 		fmt.Println(line)
+	}
+	return nil
+}
+
+type projectInfo struct {
+	Name     string `json:"name"`
+	Actions  int    `json:"next_actions"`
+	Waiting  int    `json:"waiting"`
+	Deferred int    `json:"deferred"`
+	Blocked  int    `json:"blocked"`
+	Stalled  bool   `json:"stalled"`
+}
+
+func projects() error {
+	resp, err := request(http.MethodGet, "/api/projects", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return httpErr(resp)
+	}
+	var ps []projectInfo
+	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {
+		return err
+	}
+	if len(ps) == 0 {
+		fmt.Println("(no projects)")
+		return nil
+	}
+	for _, p := range ps {
+		status := fmt.Sprintf("%d next", p.Actions)
+		if p.Stalled {
+			status = "STALLED — no next action"
+		} else if p.Actions == 0 {
+			parts := []string{}
+			if p.Waiting > 0 {
+				parts = append(parts, fmt.Sprintf("%d waiting", p.Waiting))
+			}
+			if p.Deferred > 0 {
+				parts = append(parts, fmt.Sprintf("%d deferred", p.Deferred))
+			}
+			if p.Blocked > 0 {
+				parts = append(parts, fmt.Sprintf("%d blocked", p.Blocked))
+			}
+			status = "parked (" + strings.Join(parts, ", ") + ")"
+		}
+		fmt.Printf("+%-20s %s\n", p.Name, status)
 	}
 	return nil
 }
