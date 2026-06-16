@@ -23,6 +23,7 @@ todo.txt tool can read them. GTD concepts are encoded with these conventions:
 | Waiting / delegated    | `@waiting` + `for:<person>`               |
 | Defer / tickler        | `t:YYYY-MM-DD` (dormant until that date)  |
 | Hard due date          | `due:YYYY-MM-DD`                          |
+| Dependency / sequence  | `id:<key>` on a prerequisite, `after:<key>` on the task that waits for it (blocked, hidden from next actions, until the prerequisite is done) |
 | Someday / Maybe        | a line in `someday.txt`                   |
 | Reference              | a line in `reference.txt`                 |
 
@@ -44,8 +45,9 @@ tag), and `backups/` (last 50 pre-write snapshots per file).
 ## HTTP surface
 
 Web (same-origin, browser): `/`, `/capture`, `/process`, `/next`, `/contexts`,
-`/waiting`, `/projects`, `/done` (completed; POST also completes a task),
-`/restore`, `/edit`, `/undo`, `/raw`, `/help`. JSON (CLI):
+`/waiting`, `/projects`, `/project?name=` (one project's plan; `/project/add`
+appends a task, optionally blocked by another), `/done` (completed; POST also
+completes a task), `/restore`, `/edit`, `/undo`, `/raw`, `/help`. JSON (CLI):
 `GET /api/tasks?view=next|inbox|waiting|done|all&context=&project=`, `POST /api/capture`,
 `POST /api/done`, `POST /api/edit`, `POST /api/restore`, `POST /api/undo`. All
 mutating requests must be same-origin or carry the `X-GTD-Client` header (CSRF

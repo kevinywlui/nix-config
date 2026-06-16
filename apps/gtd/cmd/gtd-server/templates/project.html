@@ -1,0 +1,88 @@
+{{define "project"}}{{template "head" .}}
+<h1>+{{.Name}}</h1>
+<p class="coach">Your plan for this project. <b>Available</b> actions can be done now;
+<b>blocked</b> ones unlock automatically when their prerequisite is done. Sketch out the
+steps you can foresee — give the first one a context so it shows up in Next.</p>
+
+{{if and (not .Available) (not .Blocked) (not .Others)}}
+<p class="empty">No tasks yet. Add the first step below.</p>
+{{end}}
+
+{{if .Available}}
+<h2>Available now</h2>
+<ul class="tasks">
+  {{range .Available}}
+  <li>
+    <form method="post" action="/done" class="doneform">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="back" value="{{$.Self}}">
+      <button type="submit" class="check" title="Mark done">✓</button>
+    </form>
+    <div class="body">
+      <span class="txt">{{.Task.DisplayText}}</span>
+      <span class="who">{{range .Task.Contexts}}@{{.}} {{end}}{{if .Task.Tag "due"}}· due {{.Task.Tag "due"}}{{end}}</span>
+    </div>
+    <a class="edit" href="/edit?id={{.ID}}&amp;back={{$.Self}}" title="Edit">✎</a>
+  </li>
+  {{end}}
+</ul>
+{{end}}
+
+{{if .Blocked}}
+<h2>Blocked</h2>
+<ul class="tasks">
+  {{range .Blocked}}
+  <li>
+    <span class="check blockedmark" title="Waiting on a prerequisite">⛒</span>
+    <div class="body">
+      <span class="txt">{{.Item.Task.DisplayText}}</span>
+      <span class="who">after: {{if .AfterText}}{{.AfterText}}{{else}}(done){{end}}</span>
+    </div>
+    <a class="edit" href="/edit?id={{.Item.ID}}&amp;back={{$.Self}}" title="Edit">✎</a>
+  </li>
+  {{end}}
+</ul>
+{{end}}
+
+{{if .Others}}
+<h2>Not yet actionable</h2>
+<ul class="tasks">
+  {{range .Others}}
+  <li>
+    <form method="post" action="/done" class="doneform">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="back" value="{{$.Self}}">
+      <button type="submit" class="check" title="Mark done">✓</button>
+    </form>
+    <div class="body">
+      <span class="txt">{{.Task.DisplayText}}</span>
+      <span class="who">{{range .Task.Contexts}}@{{.}} {{end}}{{if .Task.Tag "t"}}· defer {{.Task.Tag "t"}}{{end}}{{if .Task.Tag "for"}}· for {{.Task.Tag "for"}}{{end}}</span>
+    </div>
+    <a class="edit" href="/edit?id={{.ID}}&amp;back={{$.Self}}" title="Edit">✎</a>
+  </li>
+  {{end}}
+</ul>
+{{end}}
+
+<h2>Add a task</h2>
+<form method="post" action="/project/add" class="projadd">
+  <input type="hidden" name="project" value="{{.Name}}">
+  <input type="text" name="text" placeholder="a step in this project…" autocomplete="off" required autofocus>
+  <div class="row">
+    <label>Context<input type="text" name="context" placeholder="home, calls…" list="ctxlist"></label>
+    {{if .Tasks}}
+    <label>Blocked by
+      <select name="after">
+        <option value="">— nothing —</option>
+        {{range .Tasks}}<option value="{{.ID}}">{{.Task.DisplayText}}</option>{{end}}
+      </select>
+    </label>
+    {{end}}
+  </div>
+  <datalist id="ctxlist">
+    <option value="calls"><option value="computer"><option value="errands">
+    <option value="home"><option value="office"><option value="agenda">
+  </datalist>
+  <button type="submit">Add to project</button>
+</form>
+{{template "foot" .}}{{end}}

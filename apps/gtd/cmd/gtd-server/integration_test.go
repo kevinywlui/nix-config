@@ -387,15 +387,94 @@ func TestNextFilterByProject(t *testing.T) {
 	if !strings.Contains(b, "buy tiles") || strings.Contains(b, "email Sam") {
 		t.Fatalf("/next?project=Reno should show only the Reno task; got %s", b)
 	}
-	// The projects screen links into the project filter.
+	// The projects screen links into each project's planning page.
 	p := do(t, srv, "GET", "/projects", nil).Body.String()
-	if !strings.Contains(p, `href="/next?project=Reno"`) {
-		t.Errorf("projects screen should link to the project-filtered next list; got %s", p)
+	if !strings.Contains(p, `href="/project?name=Reno"`) {
+		t.Errorf("projects screen should link to the project page; got %s", p)
 	}
 	// API parity.
 	a := do(t, srv, "GET", "/api/tasks?view=next&project=Reno", nil).Body.String()
 	if !strings.Contains(a, "buy tiles") || strings.Contains(a, "email Sam") {
 		t.Errorf("api project filter wrong; got %s", a)
+	}
+}
+
+// The project page lets you add tasks and chain them with dependencies: a
+// blocked task stays out of Next until its prerequisite is completed.
+func TestProjectPlanningWithDependencies(t *testing.T) {
+	srv, store := newTestServer(t)
+
+	// Add a first step, then a second blocked by it (the first task is index 0).
+	if rec := do(t, srv, "POST", "/project/add", url.Values{
+		"project": {"Reno"}, "text": {"measure the wall"}, "context": {"home"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("add first = %d, want 303", rec.Code)
+	}
+	if rec := do(t, srv, "POST", "/project/add", url.Values{
+		"project": {"Reno"}, "text": {"order cabinets"}, "context": {"calls"}, "after": {"0"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("add blocked = %d, want 303", rec.Code)
+	}
+
+	active, _ := store.Read(todotxt.ActiveFile)
+	if len(active) != 2 {
+		t.Fatalf("want 2 tasks, got %v", active)
+	}
+	// The prerequisite got an id:, the dependent an after: pointing at it.
+	depID := active[0].Tag("id")
+	if depID == "" || active[1].Tag("after") != depID {
+		t.Fatalf("dependency not linked: %q / %q", active[0].Text, active[1].Text)
+	}
+
+	// While blocked, "order cabinets" is not a next action; "measure" is.
+	next := do(t, srv, "GET", "/api/tasks?view=next", nil).Body.String()
+	if !strings.Contains(next, "measure the wall") || strings.Contains(next, "order cabinets") {
+		t.Fatalf("blocked task should be hidden from Next; got %s", next)
+	}
+	// The project page shows both, under Available and Blocked, and never leaks
+	// the raw id/after keys.
+	page := do(t, srv, "GET", "/project?name=Reno", nil).Body.String()
+	if !strings.Contains(page, "measure the wall") || !strings.Contains(page, "order cabinets") {
+		t.Fatalf("project page missing tasks; got %s", page)
+	}
+	if strings.Contains(page, "id:"+depID) || strings.Contains(page, "after:"+depID) {
+		t.Errorf("project page leaked raw dependency keys; got %s", page)
+	}
+
+	// Completing the prerequisite (index 0) unblocks the dependent.
+	if rec := do(t, srv, "POST", "/done", url.Values{"id": {"0"}, "back": {"/project?name=Reno"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("done = %d, want 303", rec.Code)
+	}
+	next = do(t, srv, "GET", "/api/tasks?view=next", nil).Body.String()
+	if !strings.Contains(next, "order cabinets") {
+		t.Fatalf("dependent should unblock once its prerequisite is done; got %s", next)
+	}
+}
+
+// Editing a task's wording preserves its (hidden) dependency link.
+func TestEditPreservesDependency(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/project/add", url.Values{"project": {"P"}, "text": {"first"}, "context": {"home"}})
+	do(t, srv, "POST", "/project/add", url.Values{"project": {"P"}, "text": {"second"}, "context": {"home"}, "after": {"0"}})
+
+	before, _ := store.Read(todotxt.ActiveFile)
+	want := before[1].Tag("after")
+	if want == "" {
+		t.Fatal("setup: second task should carry an after: tag")
+	}
+	// The edit form must not expose the raw after: key in its textbox.
+	form := do(t, srv, "GET", "/edit?id=1&back=/project?name=P", nil).Body.String()
+	if strings.Contains(form, "after:"+want) {
+		t.Errorf("edit box leaked the dependency key; got %s", form)
+	}
+	// Rewording the task keeps the dependency.
+	do(t, srv, "POST", "/edit", url.Values{"id": {"1"}, "text": {"second, reworded"}})
+	after, _ := store.Read(todotxt.ActiveFile)
+	if after[1].Tag("after") != want {
+		t.Errorf("edit dropped the after: tag: %q", after[1].Text)
+	}
+	if !strings.Contains(after[1].Text, "second, reworded") {
+		t.Errorf("edit did not apply new text: %q", after[1].Text)
 	}
 }
 

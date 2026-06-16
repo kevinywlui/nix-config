@@ -143,6 +143,18 @@ button:active { transform: translateY(1px); }
 .projects li.stalled a { color: var(--warn); }
 .projects li.parked a { color: var(--sub); }
 
+/* Project planning page */
+main h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--sub); }
+.blockedmark { color: var(--muted); display: inline-flex; align-items: center;
+  justify-content: center; font-size: 1.2rem; }
+.projadd { margin-top: .6rem; }
+.projadd > input[type=text] { margin-bottom: .6rem; }
+.projadd .row { display: flex; gap: .6rem; }
+.projadd .row label { flex: 1; display: block; font-size: .85rem; color: var(--sub); }
+.projadd select { width: 100%; font-size: 1rem; padding: .7rem .8rem; margin-top: .2rem;
+  background: var(--panel); color: var(--fg); border: 1px solid #313244; border-radius: var(--radius); }
+.projadd > button { width: 100%; margin-top: .8rem; }
+
 /* Raw file view */
 .rawtabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
 .rawtabs a { background: var(--panel2); color: var(--sub); padding: .4rem .8rem;

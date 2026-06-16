@@ -46,6 +46,8 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.HandleFunc("/contexts", s.handleContexts)
 	s.mux.HandleFunc("/waiting", s.handleWaiting)
 	s.mux.HandleFunc("/projects", s.handleProjects)
+	s.mux.HandleFunc("/project", s.handleProject)
+	s.mux.HandleFunc("/project/add", s.handleProjectAdd)
 	s.mux.HandleFunc("/raw", s.handleRaw)
 	s.mux.HandleFunc("/help", s.handleHelp)
 	s.mux.HandleFunc("/done", s.handleDone)
@@ -500,6 +502,135 @@ func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "projects", map[string]any{"Projects": gtd.Projects(items, today())})
 }
 
+// blockedRow pairs a blocked task with the description of the prerequisite it's
+// waiting on, so the project page can show "after: <that step>".
+type blockedRow struct {
+	Item      gtd.Item
+	AfterText string
+}
+
+// handleProject is the planning page for one +project: every active task grouped
+// into what you can do now (Available), what's waiting on a prerequisite
+// (Blocked), and anything else still to be shaped (Others), plus an inline form
+// to add the next step.
+func (s *server) handleProject(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		http.Error(w, "missing project name", http.StatusBadRequest)
+		return
+	}
+	items, err := s.activeItems()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	ids := gtd.ActiveIDs(items)
+	td := today()
+
+	// Map each id: to its task text so a blocked row can name its prerequisite.
+	idText := map[string]string{}
+	for _, it := range items {
+		if !it.Task.Done {
+			if id := it.Task.Tag("id"); id != "" {
+				idText[id] = it.Task.DisplayText()
+			}
+		}
+	}
+
+	var available, others, tasks []gtd.Item
+	var blocked []blockedRow
+	for _, it := range items {
+		if it.Task.Done || !it.Task.HasProject(name) {
+			continue
+		}
+		tasks = append(tasks, it) // every project task is a candidate prerequisite
+		switch {
+		case gtd.IsBlocked(it.Task, ids):
+			blocked = append(blocked, blockedRow{Item: it, AfterText: idText[it.Task.Tag("after")]})
+		case gtd.IsNextAction(it.Task, td):
+			available = append(available, it)
+		default:
+			others = append(others, it)
+		}
+	}
+
+	s.render(w, "project", map[string]any{
+		"Name":      name,
+		"Available": available,
+		"Blocked":   blocked,
+		"Others":    others,
+		"Tasks":     tasks,
+		"Self":      "/project?name=" + url.QueryEscape(name),
+	})
+}
+
+// handleProjectAdd appends a task to a project from the project page, optionally
+// blocked by another task. The whole thing — minting an id: on the prerequisite
+// if needed and appending the new task with its after: — happens in one atomic
+// mutation, so it's a single undo step.
+func (s *server) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.csrfOK(r) {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
+	proj := strings.TrimSpace(r.FormValue("project"))
+	if proj == "" {
+		http.Error(w, "missing project", 400)
+		return
+	}
+	text := normalizeText(r.FormValue("text"))
+	if text == "" {
+		http.Error(w, "a task needs a description", 400)
+		return
+	}
+	ctx := strings.TrimSpace(r.FormValue("context"))
+	afterIdx := -1
+	if v := strings.TrimSpace(r.FormValue("after")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			http.Error(w, "bad blocker id", 400)
+			return
+		}
+		afterIdx = n
+	}
+
+	err := s.store.Mutate(todotxt.ActiveFile, func(ts []todotxt.Task) ([]todotxt.Task, error) {
+		depID := ""
+		if afterIdx >= 0 {
+			if afterIdx >= len(ts) {
+				return nil, fmt.Errorf("blocker task %d not found", afterIdx)
+			}
+			depID = ts[afterIdx].Tag("id")
+			if depID == "" { // give the prerequisite a stable id to point at
+				depID = newDepID()
+				p := ts[afterIdx]
+				p.SetTag("id", depID)
+				ts[afterIdx] = p
+			}
+		}
+		na, _ := todotxt.Parse(text)
+		na.Created = today()
+		na.AddContext(ctx) // a blank context is a no-op
+		na.AddProject(proj)
+		if depID != "" {
+			na.SetTag("after", depID)
+		}
+		return append(ts, na), nil
+	})
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	http.Redirect(w, r, "/project?name="+url.QueryEscape(proj), http.StatusSeeOther)
+}
+
+// newDepID mints a short, single-token key for the id:/after: dependency link.
+func newDepID() string { return strconv.FormatInt(time.Now().UnixNano(), 36) }
+
 // projectNames returns the active project names, for autocomplete datalists on
 // the Clarify and Edit forms (keeping names consistent avoids +Foo/+foo drift).
 func (s *server) projectNames() []string {
@@ -644,9 +775,10 @@ func (s *server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		note, _ = s.store.ReadNote(key)
 	}
 	// Show the description without the tags the form surfaces as their own
-	// fields, so they aren't edited in two places at once.
+	// fields (and the internal dependency keys), so they aren't edited in two
+	// places at once. The id:/after: links are preserved on save in editPost.
 	disp := t
-	for _, k := range []string{"due", "t", "for", "note"} {
+	for _, k := range []string{"due", "t", "for", "note", "id", "after"} {
 		disp.SetTag(k, "")
 	}
 	s.render(w, "edit", map[string]any{
@@ -705,6 +837,9 @@ func (s *server) editPost(w http.ResponseWriter, r *http.Request) {
 
 	ctx, person, proj := f("context"), f("person"), f("project")
 	err = s.replaceActive(id, func(t *todotxt.Task) {
+		// The dependency links aren't shown in the edit box, so capture them
+		// before overwriting Text and re-apply, preserving them across an edit.
+		depID, depAfter := t.Tag("id"), t.Tag("after")
 		t.Text = text
 		if ctx != "" {
 			t.RemoveContext(gtd.ContextInbox)
@@ -724,6 +859,8 @@ func (s *server) editPost(w http.ResponseWriter, r *http.Request) {
 		} else {
 			t.SetTag("note", "")
 		}
+		t.SetTag("id", depID)
+		t.SetTag("after", depAfter)
 	})
 	if err != nil {
 		http.Error(w, err.Error(), 500)

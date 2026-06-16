@@ -1,6 +1,26 @@
 package todotxt
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+// DisplayText hides the app's internal pointer tags (note:, id:, after:) while
+// keeping the real description, contexts and projects.
+func TestDisplayTextHidesPlumbing(t *testing.T) {
+	task, _ := Parse("order cabinets +Reno after:k1 id:k2 note:n1 @calls")
+	got := task.DisplayText()
+	for _, leak := range []string{"note:", "id:", "after:", "k1", "k2", "n1"} {
+		if strings.Contains(got, leak) {
+			t.Errorf("DisplayText leaked %q: %q", leak, got)
+		}
+	}
+	for _, keep := range []string{"order cabinets", "+Reno", "@calls"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("DisplayText dropped %q: %q", keep, got)
+		}
+	}
+}
 
 func TestParseRoundTrip(t *testing.T) {
 	cases := []string{

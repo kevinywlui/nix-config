@@ -97,12 +97,15 @@ func (t Task) String() string {
 // fields returns the whitespace-split description tokens.
 func (t Task) fields() []string { return strings.Fields(t.Text) }
 
-// DisplayText is the description with the internal note: pointer tag removed, so
-// the long note key isn't shown to the user. The note's presence is surfaced
-// separately (e.g. a 📝 indicator), not as raw text.
+// DisplayText is the description with the app's internal pointer tags removed —
+// the note: key and the id:/after: dependency keys — so those opaque tokens
+// aren't shown to the user. Their meaning is surfaced separately (a 📝 flag, a
+// "blocked / after" line), not as raw text.
 func (t Task) DisplayText() string {
 	c := t
 	c.SetTag("note", "")
+	c.SetTag("id", "")
+	c.SetTag("after", "")
 	return c.Text
 }
 

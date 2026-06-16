@@ -9,10 +9,10 @@ fine: it's waiting on someone or deferred to a date. Tap a project to see its ac
 <ul class="projects">
   {{range .Projects}}
   <li class="{{if .Stalled}}stalled{{else if .Parked}}parked{{end}}">
-    <a href="/next?project={{.Name}}">+{{.Name}}</a>
+    <a href="/project?name={{.Name}}">+{{.Name}}</a>
     {{if .Stalled}}<span class="badge warn">stalled — no next action</span>
     {{else if gt .Actions 0}}<span class="badge">{{.Actions}} next action{{if ne .Actions 1}}s{{end}}</span>
-    {{else}}<span class="badge warn">parked{{if gt .Waiting 0}} · {{.Waiting}} waiting{{end}}{{if gt .Deferred 0}} · {{.Deferred}} deferred{{end}}</span>{{end}}
+    {{else}}<span class="badge warn">parked{{if gt .Waiting 0}} · {{.Waiting}} waiting{{end}}{{if gt .Deferred 0}} · {{.Deferred}} deferred{{end}}{{if gt .Blocked 0}} · {{.Blocked}} blocked{{end}}</span>{{end}}
   </li>
   {{end}}
 </ul>
