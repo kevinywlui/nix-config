@@ -4,48 +4,103 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # PR pushes supersede each other, but every main push must run to
+  # completion so each merged commit keeps a verified closure build.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: cachix/install-nix-action@v25
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          nix_path: nixpkgs=channel:nixos-unstable
+          persist-credentials: false
 
-      - name: Install Dev Tools
-        run: |
-          nix profile install nixpkgs#pre-commit \
-                              nixpkgs#gitleaks \
-                              nixpkgs#shellcheck \
-                              nixpkgs#shfmt \
-                              nixpkgs#nixpkgs-fmt
+      - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
 
-      - name: Run Pre-Commit
-        # This runs all hooks defined in .pre-commit-config.yaml
-        # ensuring linting, formatting, and secret scanning pass.
-        run: pre-commit run --all-files --show-diff-on-failure
+      - name: Run pre-commit
+        # Hook tools come from the flake devShell, pinned by flake.lock — see
+        # the devShell comment in flake.nix for the rationale.
+        run: nix develop --command pre-commit run --all-files --show-diff-on-failure
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     strategy:
+      fail-fast: false
       matrix:
         host: [fw13, t480]
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: cachix/install-nix-action@v25
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-
-      - name: Dry-run build ${{ matrix.host }}
-        # Instantiates the full derivation graph and resolves all dependencies
-        # without downloading or building packages. Catches build failures that
-        # `nix flake check --no-build` misses.
+      - name: Free runner disk space
+        # Full system closures need more room than the stock runner's free
+        # ~20GB. Dropping the large preinstalled toolchains recovers ~30GB.
         run: |
-          nix build --dry-run \
-            ./nix#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/.ghcup /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force > /dev/null
+          df -h /
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Full history: the closure-diff step resolves the merge-base and
+          # builds it from the local object store via a git+file flake ref.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
+
+      - name: Build ${{ matrix.host }} system closure
+        # Build-level gate: the same toplevel derivation `nh os build`
+        # verifies locally (boot/activation behavior is not exercised). The
+        # previous --dry-run only instantiated the derivation graph, so real
+        # build failures (broken patches, bad hashes) sailed through CI.
+        run: |
+          nix build -L \
+            .#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel \
+            -o result-new
+
+      - name: Closure diff vs merge-base (nvd)
+        if: github.event_name == 'pull_request'
+        # CI half of the repo's `nh os build` + nvd contract (AGENTS.md):
+        # surface every package addition/removal/version change at review
+        # time, warning on removals (intentional ones are legitimate — the
+        # reviewer decides). Advisory by design: each stage degrades to a
+        # tagged warning because the build gate above has already passed.
+        # The base closure is built straight from the merge-base commit via
+        # a git+file flake ref, so the working tree is never touched.
+        run: |
+          df -h /
+          if ! base="$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)"; then
+            echo "::warning title=Closure diff skipped (${{ matrix.host }})::could not resolve merge-base with origin/$GITHUB_BASE_REF"
+            exit 0
+          fi
+          if ! nix build \
+            "git+file://$PWD?rev=$base#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel" \
+            -o result-base; then
+            df -h /
+            echo "::warning title=Closure diff skipped (${{ matrix.host }})::merge-base $base failed to build — check the log above to distinguish a broken base from disk exhaustion"
+            exit 0
+          fi
+          if ! diff="$(nix develop --command nvd diff ./result-base ./result-new)"; then
+            echo "::warning title=Closure diff skipped (${{ matrix.host }})::nvd diff failed"
+            exit 0
+          fi
+          echo "$diff"
+          {
+            echo "## nvd closure diff: ${{ matrix.host }}"
+            echo ""
+            # Indented code block: keeps PR-influenced package names from
+            # being interpreted as Markdown in the summary.
+            echo "$diff" | sed 's/^/    /'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if echo "$diff" | grep -q '^\[R'; then
+            echo "::warning title=Packages removed on ${{ matrix.host }}::nvd reports removed packages — verify each is intentional (see job summary)."
+          fi

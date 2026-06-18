@@ -13,6 +13,7 @@ This project uses **`nh os build`** as the primary verification tool during deve
 - **Mandatory gate:** Agents **must** run `nh os build` and confirm it succeeds **before staging or committing** any changes that touch `.nix` files. Do not commit first and build later. A clean build is a required pre-condition for every commit in this repository. Once the build is clean, **commit immediately without asking the user** — do not wait for confirmation.
 - **What to check in the output:** No `error:` lines; no unexpected `- [package]` removals in the nvd diff. Version bumps and new packages are expected — silently removed packages must be investigated and resolved before proceeding.
 - **CWD:** `nh os build` works from any directory because `programs.nh.flake = dotfilesPath` is wired in `nix/modules/nixos/profiles/core.nix`. No `cd` required.
+- **CI equivalence:** GitHub Actions (`.github/workflows/ci.yaml`) builds the same host toplevels on every PR and main push, and runs the pre-commit hooks with the toolchain pinned by `flake.lock` via the flake devShell — `nix develop -c pre-commit run --all-files` reproduces CI's lint pass locally. In an environment without Nix (e.g. a remote agent container), a green CI build of the branch is the equivalent gate. Standing CI invariants: the workflow holds no secrets, its token is read-only (`permissions: contents: read`), and fork PRs require approval before workflows run.
 
 ## Hosts
 This repository manages two NixOS hosts:
