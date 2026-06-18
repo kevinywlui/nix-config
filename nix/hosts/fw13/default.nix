@@ -1,5 +1,27 @@
 { pkgs, lib, inputs, ... }:
 
+let
+  # Weekly desktop nudge when fwupd has stable firmware updates. Reads the
+  # metadata that fwupd-refresh.timer already keeps fresh (a pure query, no
+  # polkit/sudo), so it runs as the user and notify-send reaches dunst on the
+  # user session bus. Applying updates still needs `fwupdmgr update` + reboot.
+  fwupdNotify = pkgs.writeShellApplication {
+    name = "fwupd-update-notify";
+    runtimeInputs = with pkgs; [ fwupd jq libnotify ];
+    text = ''
+      json=$(fwupdmgr get-updates --json 2>/dev/null || true)
+      count=$(printf '%s' "$json" | jq -r '(.Devices // []) | length' 2>/dev/null || echo 0)
+      [ "''${count:-0}" -gt 0 ] || exit 0
+      names=$(printf '%s' "$json" | jq -r '[.Devices[].Name] | unique | join(", ")')
+      notify-send \
+        --app-name=fwupd \
+        --icon=software-update-available \
+        --urgency=normal \
+        "Firmware updates available" \
+        "$names — run 'fwupdmgr update' (needs sudo + reboot)"
+    '';
+  };
+in
 {
   imports = [
     ../../modules/nixos/profiles/core.nix
@@ -138,5 +160,22 @@
       esptool
       platformio
     ];
+
+    systemd.user.services.fwupd-update-notify = {
+      Unit.Description = "Notify if firmware (fwupd) updates are available";
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${fwupdNotify}/bin/fwupd-update-notify";
+      };
+    };
+    systemd.user.timers.fwupd-update-notify = {
+      Unit.Description = "Weekly firmware update check";
+      Timer = {
+        OnCalendar = "weekly";
+        Persistent = true;
+        RandomizedDelaySec = "1h";
+      };
+      Install.WantedBy = [ "timers.target" ];
+    };
   };
 }
