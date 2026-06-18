@@ -344,6 +344,42 @@ Accepted limitations:
   `crypto/rand` suffix must land before the Trash feature relies on it. (Phase 0
   can mint as-is — ids are advisory there.)
 
+### 3.6 Relationship to the existing 50-entry backup ring
+
+The Store already keeps a per-file ring of the last 50 pre-write snapshots
+(`keepBackups = 50` in `store.go`). A reasonable question is whether git makes it
+redundant. **It does not — yet — and the decision is to keep it, then shrink it,
+never to delete it.**
+
+The ring and git cover different failure domains:
+
+| | 50-entry ring | git layer |
+| --- | --- | --- |
+| Timing | synchronous, **pre-write** (old bytes captured before overwrite) | async, **post-write** (debounced, after rename) |
+| Conditional? | always runs, stdlib, zero-dep | **best-effort** — no-ops if git is absent/failing/timing-out |
+| In production? | works today | **dormant until Phase 1** (git on the service PATH) |
+
+The ring uniquely covers "undo the immediately-prior write" when git has not yet
+captured that state: inside the debounce window, when git is off PATH, or on the
+first change since the last commit. Atomic writes prevent *torn* files but do not
+provide this logical undo. Removing the ring would couple the primary
+"undo the last bad write" path to an unproven, conditional, currently-dormant
+layer.
+
+Once git is reliably running in production, git owns *deep* history completely
+(unbounded, off-host once pulled), and the ring's only enduring role is the
+synchronous pre-write net above — which does **not** need 50 entries.
+
+**Decision:**
+
+- Keep the ring **untouched through Phases 0–3** while git is unproven and partly
+  dormant.
+- After git has run cleanly in production for a while, **shrink `keepBackups`
+  from 50 to ~5** — git owns history; the ring becomes a thin synchronous
+  crash/no-git net. This is the real complexity reduction (less `backups/` churn,
+  simpler mental model) without giving up the one property git cannot offer.
+- **Do not delete it** and do not invest further in it.
+
 ---
 
 ## 4. Detailed design — durability
