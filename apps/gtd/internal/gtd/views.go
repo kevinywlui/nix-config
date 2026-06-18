@@ -56,6 +56,36 @@ func IsInbox(t todotxt.Task) bool { return t.HasContext(ContextInbox) }
 // IsWaiting reports a delegated / awaiting item.
 func IsWaiting(t todotxt.Task) bool { return t.HasContext(ContextWaiting) }
 
+// HasRealContext reports whether the task carries at least one non-reserved
+// @context — the contexts a next action can live on. Used when restoring a
+// completed task to decide whether it can rejoin the next-actions lists or
+// should fall back to the inbox.
+func HasRealContext(t todotxt.Task) bool { return len(realContexts(t)) > 0 }
+
+// ActiveIDs returns the set of id: tags carried by the not-done items — the
+// prerequisites a task's after: tag can still be waiting on.
+func ActiveIDs(items []Item) map[string]bool {
+	ids := map[string]bool{}
+	for _, it := range items {
+		if it.Task.Done {
+			continue
+		}
+		if id := it.Task.Tag("id"); id != "" {
+			ids[id] = true
+		}
+	}
+	return ids
+}
+
+// IsBlocked reports a task whose after: prerequisite is still an active task.
+// Once that prerequisite is completed (and leaves the active list) its id is no
+// longer in activeIDs, so the task unblocks automatically. A dangling after:
+// (prerequisite never existed or already gone) is treated as satisfied.
+func IsBlocked(t todotxt.Task, activeIDs map[string]bool) bool {
+	a := t.Tag("after")
+	return a != "" && activeIDs[a]
+}
+
 // realContexts returns the task's contexts excluding the reserved ones.
 func realContexts(t todotxt.Task) []string {
 	var out []string
@@ -84,13 +114,23 @@ func Waiting(items []Item) []Item {
 	return filter(items, func(t todotxt.Task) bool { return !t.Done && IsWaiting(t) })
 }
 
-// NextActions returns next actions; if context != "" it filters to that context.
-func NextActions(items []Item, today, context string) []Item {
+// NextActions returns next actions, optionally filtered to a context and/or a
+// project (each empty string means "don't filter on that dimension"). When both
+// are set the filters intersect. Tasks blocked by an unfinished prerequisite
+// (after:) are excluded — they aren't actionable yet.
+func NextActions(items []Item, today, context, project string) []Item {
+	ids := ActiveIDs(items)
 	return filter(items, func(t todotxt.Task) bool {
-		if !IsNextAction(t, today) {
+		if !IsNextAction(t, today) || IsBlocked(t, ids) {
 			return false
 		}
-		return context == "" || t.HasContext(context)
+		if context != "" && !t.HasContext(context) {
+			return false
+		}
+		if project != "" && !t.HasProject(project) {
+			return false
+		}
+		return true
 	})
 }
 
@@ -103,10 +143,11 @@ type Context struct {
 // Contexts returns the distinct real contexts across current next actions,
 // each with its action count, in stable (insertion) order.
 func Contexts(items []Item, today string) []Context {
+	ids := ActiveIDs(items)
 	order := []string{}
 	count := map[string]int{}
 	for _, it := range items {
-		if !IsNextAction(it.Task, today) {
+		if !IsNextAction(it.Task, today) || IsBlocked(it.Task, ids) {
 			continue
 		}
 		for _, c := range realContexts(it.Task) {
@@ -123,39 +164,65 @@ func Contexts(items []Item, today string) []Context {
 	return out
 }
 
-// Project is a project name with the count of associated next actions. A count
-// of zero marks a stalled project (one with no next action) — the highest-value
-// signal a GTD review can surface.
+// Project is a project name with a breakdown of its active (not-done) tasks:
+// Actions (next actions advancing it now), Waiting (delegated/awaiting),
+// Deferred (a real next step dormant until its t: date), and Blocked (waiting on
+// a prerequisite via after:). The split lets a review tell these states apart —
+// see Stalled/Parked.
 type Project struct {
-	Name    string
-	Actions int
+	Name     string
+	Actions  int
+	Waiting  int
+	Deferred int
+	Blocked  int
 }
 
+// Stalled reports a project that genuinely needs attention: it has active tasks
+// but not one is a next action, waiting, deferred, or blocked on a prerequisite
+// — so nothing will ever move it. This is the highest-value signal a GTD review
+// surfaces. (A project whose tasks are all done simply drops off the list.)
+func (p Project) Stalled() bool {
+	return p.Actions == 0 && p.Waiting == 0 && p.Deferred == 0 && p.Blocked == 0
+}
+
+// Parked reports a project with no next action right now but which is legitimately
+// in motion — waiting on someone, deferred to a date, or blocked on a
+// prerequisite step. Amber, not red.
+func (p Project) Parked() bool { return p.Actions == 0 && !p.Stalled() }
+
 // Projects returns the distinct +projects across all active (not-done) tasks,
-// each annotated with how many current next actions advance it.
+// each annotated with its next/waiting/deferred/blocked task counts.
 func Projects(items []Item, today string) []Project {
+	ids := ActiveIDs(items)
 	order := []string{}
-	actions := map[string]int{}
-	seen := map[string]bool{}
+	acc := map[string]*Project{}
 	for _, it := range items {
-		if it.Task.Done {
+		t := it.Task
+		if t.Done {
 			continue
 		}
-		next := IsNextAction(it.Task, today)
-		for _, p := range it.Task.Projects() {
-			if !seen[p] {
-				seen[p] = true
-				order = append(order, p)
-				actions[p] = 0
+		for _, name := range t.Projects() {
+			p := acc[name]
+			if p == nil {
+				p = &Project{Name: name}
+				acc[name] = p
+				order = append(order, name)
 			}
-			if next {
-				actions[p]++
+			switch {
+			case IsBlocked(t, ids):
+				p.Blocked++
+			case IsNextAction(t, today):
+				p.Actions++
+			case IsWaiting(t):
+				p.Waiting++
+			case !IsInbox(t) && len(realContexts(t)) > 0 && !thresholdReached(t, today):
+				p.Deferred++
 			}
 		}
 	}
 	out := make([]Project, len(order))
-	for i, p := range order {
-		out[i] = Project{Name: p, Actions: actions[p]}
+	for i, name := range order {
+		out[i] = *acc[name]
 	}
 	return out
 }

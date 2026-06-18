@@ -34,7 +34,7 @@ func TestClassification(t *testing.T) {
 	if got := len(Waiting(items)); got != 1 {
 		t.Errorf("Waiting count = %d, want 1", got)
 	}
-	na := NextActions(items, today, "")
+	na := NextActions(items, today, "", "")
 	if got := len(na); got != 2 {
 		t.Errorf("NextActions count = %d, want 2", got)
 	}
@@ -48,7 +48,7 @@ func TestClassification(t *testing.T) {
 		t.Error("threshold task should be a next action after its t: date")
 	}
 
-	if got := len(NextActions(items, today, "calls")); got != 1 {
+	if got := len(NextActions(items, today, "calls", "")); got != 1 {
 		t.Errorf("calls next actions = %d, want 1", got)
 	}
 }
@@ -84,5 +84,62 @@ func TestContextsAndProjects(t *testing.T) {
 	}
 	if old == nil || old.Actions != 0 {
 		t.Errorf("oldproj should be stalled (0 actions), got %+v", old)
+	}
+	if site.Parked() || site.Stalled() {
+		t.Errorf("site has next actions; should be neither parked nor stalled: %+v", site)
+	}
+	if !old.Stalled() {
+		t.Errorf("oldproj (only an @inbox task) should be stalled: %+v", old)
+	}
+}
+
+// A task with after: pointing at an active task's id: is blocked (kept out of
+// next actions) and unblocks once that prerequisite leaves the active list.
+func TestBlockedDependencies(t *testing.T) {
+	const today = "2026-06-15"
+
+	// A is the prerequisite (id:k1); B waits on it (after:k1).
+	items := parseAll("A @home id:k1 +Reno", "B @home after:k1 +Reno")
+	na := NextActions(items, today, "", "")
+	if len(na) != 1 || na[0].Task.Text != "A @home id:k1 +Reno" {
+		t.Fatalf("while A is active, only A is a next action; got %v", na)
+	}
+	p := Projects(items, today)[0]
+	if p.Actions != 1 || p.Blocked != 1 {
+		t.Errorf("project should be 1 action + 1 blocked, got %+v", p)
+	}
+	if p.Stalled() || p.Parked() {
+		t.Errorf("a project with an available action is neither stalled nor parked: %+v", p)
+	}
+
+	// Once A is done (no active task carries id:k1), B unblocks.
+	done := parseAll("x 2026-06-15 A id:k1 +Reno", "B @home after:k1 +Reno")
+	na = NextActions(done, today, "", "")
+	if len(na) != 1 || na[0].Task.Text != "B @home after:k1 +Reno" {
+		t.Fatalf("after A completes, B should be the next action; got %v", na)
+	}
+}
+
+// A project with no next action is "stalled" only if nothing is waiting or
+// deferred; a waiting-only or deferred-only project is "parked", not stalled.
+func TestProjectParkedVsStalled(t *testing.T) {
+	const today = "2026-06-15"
+	items := parseAll(
+		"call the vendor @waiting for:acme +deal",   // waiting-only
+		"kick off later t:2099-01-01 @home +reno",   // deferred-only
+		"abandoned thing +ghost",                    // no context => genuinely stuck
+	)
+	got := map[string]Project{}
+	for _, p := range Projects(items, today) {
+		got[p.Name] = p
+	}
+	if p := got["deal"]; !p.Parked() || p.Stalled() || p.Waiting != 1 {
+		t.Errorf("deal should be parked (waiting), got %+v", p)
+	}
+	if p := got["reno"]; !p.Parked() || p.Stalled() || p.Deferred != 1 {
+		t.Errorf("reno should be parked (deferred), got %+v", p)
+	}
+	if p := got["ghost"]; !p.Stalled() {
+		t.Errorf("ghost should be stalled, got %+v", p)
 	}
 }

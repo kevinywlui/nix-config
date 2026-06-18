@@ -55,12 +55,39 @@ func TestCLIListSendsViewAndContext(t *testing.T) {
 	srv := stubServer(t, http.StatusOK, `[{"id":2,"text":"do x @home","due":"2026-07-01"}]`, &rec)
 	t.Setenv("GTD_ENDPOINT", srv.URL)
 
-	if err := list("next", "home"); err != nil {
+	if err := list("next", "home", ""); err != nil {
 		t.Fatalf("list: %v", err)
 	}
 	if rec.method != "GET" || !strings.Contains(rec.path, "/api/tasks") ||
 		!strings.Contains(rec.path, "view=next") || !strings.Contains(rec.path, "context=home") {
 		t.Errorf("list hit %s, want GET /api/tasks?view=next&context=home", rec.path)
+	}
+}
+
+func TestCLINextByProject(t *testing.T) {
+	var rec captured
+	srv := stubServer(t, http.StatusOK, `[]`, &rec)
+	t.Setenv("GTD_ENDPOINT", srv.URL)
+
+	// "gtd next +Reno" must filter by project, not context.
+	if err := list("next", "", "Reno"); err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !strings.Contains(rec.path, "project=Reno") || strings.Contains(rec.path, "context=") {
+		t.Errorf("list hit %s, want project=Reno and no context", rec.path)
+	}
+}
+
+func TestCLIProjectsSendsRequest(t *testing.T) {
+	var rec captured
+	srv := stubServer(t, http.StatusOK, `[{"name":"Reno","next_actions":2,"stalled":false}]`, &rec)
+	t.Setenv("GTD_ENDPOINT", srv.URL)
+
+	if err := projects(); err != nil {
+		t.Fatalf("projects: %v", err)
+	}
+	if rec.method != "GET" || rec.path != "/api/projects" {
+		t.Errorf("projects hit %s %s, want GET /api/projects", rec.method, rec.path)
 	}
 }
 

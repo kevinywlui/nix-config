@@ -1,9 +1,11 @@
 package todotxt
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -17,7 +19,24 @@ const (
 	SomedayFile   = "someday.txt"
 	ReferenceFile = "reference.txt"
 	backupDir     = "backups"
+	notesDir      = "notes"
 )
+
+// noteKeyRe constrains a note key to a filename-safe shape, so a key read from
+// a (user-editable) task tag can't escape the notes directory via path
+// traversal.
+var noteKeyRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// managedFiles are the files Undo snapshots and restores as one set, so a single
+// undo rolls back a mutation that touched more than one file (e.g. a Transfer
+// that moved a task from todo.txt to done.txt).
+var managedFiles = []string{ActiveFile, DoneFile, SomedayFile, ReferenceFile}
+
+// ErrNothingToUndo is returned by Undo when no mutation has been recorded yet.
+var ErrNothingToUndo = errors.New("nothing to undo")
+
+// ErrNothingToRedo is returned by Redo when the last action wasn't an undo.
+var ErrNothingToRedo = errors.New("nothing to redo")
 
 // keepBackups bounds the timestamped backups retained per file. Older ones are
 // pruned on each write so a long-lived list cannot grow the dir unbounded.
@@ -29,8 +48,23 @@ const keepBackups = 50
 // can never corrupt the canonical file and an accidental bulk edit is
 // recoverable.
 type Store struct {
-	dir string
-	mu  sync.Mutex
+	dir  string
+	mu   sync.Mutex
+	undo *snapshot // managed-file content from just before the last mutation
+	redo *snapshot // managed-file content from just before the last undo
+}
+
+// snapshot is the verbatim content of every managed file captured immediately
+// before a mutation, so Undo can restore the whole set in one step.
+type snapshot struct {
+	files map[string]fileState
+}
+
+// fileState records one file's bytes and whether it existed at snapshot time, so
+// Undo can recreate a deleted file or remove one that the mutation created.
+type fileState struct {
+	data    []byte
+	existed bool
 }
 
 // New returns a Store rooted at dir. The directory and its backups/ subdir are
@@ -39,7 +73,63 @@ func New(dir string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(dir, backupDir), 0o750); err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(filepath.Join(dir, notesDir), 0o750); err != nil {
+		return nil, err
+	}
 	return &Store{dir: dir}, nil
+}
+
+// ReadNote returns the free-form note text attached under key (the value of a
+// task's note: tag), or "" if there is none.
+func (s *Store) ReadNote(key string) (string, error) {
+	if !noteKeyRe.MatchString(key) {
+		return "", fmt.Errorf("invalid note key %q", key)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := os.ReadFile(filepath.Join(s.dir, notesDir, key+".txt"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
+// WriteNote stores free-form note text under key, replacing any existing note.
+// Empty content deletes the note. Notes live in their own files (not the
+// todo.txt line), so they may contain newlines freely.
+func (s *Store) WriteNote(key, content string) error {
+	if !noteKeyRe.MatchString(key) {
+		return fmt.Errorf("invalid note key %q", key)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	path := filepath.Join(s.dir, notesDir, key+".txt")
+	if content == "" {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	tmp, err := os.CreateTemp(filepath.Join(s.dir, notesDir), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o640); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // Read loads and parses the named file. A missing file is treated as empty.
@@ -96,7 +186,13 @@ func (s *Store) Mutate(name string, fn func([]Task) ([]Task, error)) error {
 	if err != nil {
 		return err
 	}
-	return s.writeLocked(name, out)
+	snap := s.takeSnapshotLocked()
+	if err := s.writeLocked(name, out); err != nil {
+		return err
+	}
+	s.undo = snap
+	s.redo = nil // a fresh change invalidates any pending redo
+	return nil
 }
 
 // Append adds a single line to the named file without rewriting the rest. It
@@ -110,7 +206,13 @@ func (s *Store) Append(name, line string) error {
 	if !ok {
 		return fmt.Errorf("refusing to append blank line to %s", name)
 	}
-	return s.appendLineLocked(name, t)
+	snap := s.takeSnapshotLocked()
+	if err := s.appendLineLocked(name, t); err != nil {
+		return err
+	}
+	s.undo = snap
+	s.redo = nil // a fresh change invalidates any pending redo
+	return nil
 }
 
 // Transfer atomically moves the task at id from srcName to destName, applying
@@ -131,10 +233,16 @@ func (s *Store) Transfer(srcName string, id int, destName string, transform func
 	if transform != nil {
 		moved = transform(moved)
 	}
+	snap := s.takeSnapshotLocked()
 	if err := s.appendLineLocked(destName, moved); err != nil {
 		return err
 	}
-	return s.writeLocked(srcName, append(src[:id:id], src[id+1:]...))
+	if err := s.writeLocked(srcName, append(src[:id:id], src[id+1:]...)); err != nil {
+		return err
+	}
+	s.undo = snap
+	s.redo = nil // a fresh change invalidates any pending redo
+	return nil
 }
 
 // appendLineLocked appends one serialised task to a file. Caller holds the lock.
@@ -149,6 +257,18 @@ func (s *Store) appendLineLocked(name string, t Task) error {
 }
 
 func (s *Store) writeLocked(name string, tasks []Task) error {
+	var b strings.Builder
+	for _, t := range tasks {
+		b.WriteString(t.String())
+		b.WriteByte('\n')
+	}
+	return s.rawWriteLocked(name, []byte(b.String()))
+}
+
+// rawWriteLocked overwrites name with data, backing up the prior content first
+// and using a temp file + rename so a crash mid-write can't corrupt the file.
+// Caller holds the lock.
+func (s *Store) rawWriteLocked(name string, data []byte) error {
 	path := filepath.Join(s.dir, name)
 
 	// Back up the current content before overwriting.
@@ -159,19 +279,13 @@ func (s *Store) writeLocked(name string, tasks []Task) error {
 		s.pruneBackups(name)
 	}
 
-	var b strings.Builder
-	for _, t := range tasks {
-		b.WriteString(t.String())
-		b.WriteByte('\n')
-	}
-
 	tmp, err := os.CreateTemp(s.dir, ".tmp-"+name+"-*")
 	if err != nil {
 		return err
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op once the rename succeeds
-	if _, err := tmp.WriteString(b.String()); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -182,6 +296,92 @@ func (s *Store) writeLocked(name string, tasks []Task) error {
 		return err
 	}
 	return os.Rename(tmpName, path)
+}
+
+// takeSnapshotLocked captures the current bytes of every managed file. Caller
+// holds the lock. The result is assigned to s.undo only after the mutation that
+// follows succeeds, so a failed write leaves the prior undo point intact.
+func (s *Store) takeSnapshotLocked() *snapshot {
+	snap := &snapshot{files: make(map[string]fileState, len(managedFiles))}
+	for _, name := range managedFiles {
+		data, err := os.ReadFile(filepath.Join(s.dir, name))
+		if err != nil {
+			snap.files[name] = fileState{existed: false}
+			continue
+		}
+		snap.files[name] = fileState{data: data, existed: true}
+	}
+	return snap
+}
+
+// CanUndo reports whether a mutation is available to roll back.
+func (s *Store) CanUndo() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.undo != nil
+}
+
+// CanRedo reports whether the last action was an undo that can be reapplied.
+func (s *Store) CanRedo() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.redo != nil
+}
+
+// restoreLocked writes a snapshot back over the managed files, recreating or
+// removing files as needed. Caller holds the lock. Each overwrite is itself
+// backed up (rawWriteLocked snapshots first), so even an unwanted restore is
+// recoverable from backups/.
+func (s *Store) restoreLocked(snap *snapshot) error {
+	for name, fs := range snap.files {
+		if !fs.existed {
+			if err := os.Remove(filepath.Join(s.dir, name)); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			continue
+		}
+		if err := s.rawWriteLocked(name, fs.data); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Undo restores every managed file to its content from just before the last
+// mutation. The pre-undo state is captured as the redo point first, so a single
+// (e.g. accidental) undo can be reapplied with Redo. Returns ErrNothingToUndo if
+// no mutation has been recorded.
+func (s *Store) Undo() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.undo == nil {
+		return ErrNothingToUndo
+	}
+	redo := s.takeSnapshotLocked() // current (post-mutation) state, to redo to
+	if err := s.restoreLocked(s.undo); err != nil {
+		return err
+	}
+	s.undo = nil
+	s.redo = redo
+	return nil
+}
+
+// Redo reapplies the change that the last Undo rolled back, and re-arms Undo so
+// the pair toggles. Any new mutation clears the redo point. Returns
+// ErrNothingToRedo if the last action wasn't an undo.
+func (s *Store) Redo() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.redo == nil {
+		return ErrNothingToRedo
+	}
+	undo := s.takeSnapshotLocked() // current (undone) state, to undo back to
+	if err := s.restoreLocked(s.redo); err != nil {
+		return err
+	}
+	s.redo = nil
+	s.undo = undo
+	return nil
 }
 
 // pruneBackups keeps only the newest keepBackups snapshots of name. Caller

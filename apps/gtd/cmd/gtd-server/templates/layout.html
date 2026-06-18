@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1117">
+<link rel="icon" href="/static/favicon.svg">
 <link rel="manifest" href="/static/manifest.json">
 <link rel="stylesheet" href="/static/style.css">
 <title>GTD</title>
@@ -16,10 +17,15 @@
     <a href="/process">Process</a>
     <a href="/next">Next</a>
     <a href="/projects">Projects</a>
+    <a href="/done">Done</a>
     <a href="/raw">Files</a>
+    <a href="/help">Help</a>
   </nav>
 </header>
-<main>{{end}}
+<main>
+{{if .Undo}}<form method="post" action="/undo" class="actionbar"><button type="submit">↶ Undo that</button></form>{{end}}
+{{if .Redo}}<form method="post" action="/redo" class="actionbar redo"><button type="submit">↷ Redo that</button></form>{{end}}
+{{end}}
 
 {{define "foot"}}</main>
 <nav class="tabbar">

@@ -23,6 +23,7 @@ todo.txt tool can read them. GTD concepts are encoded with these conventions:
 | Waiting / delegated    | `@waiting` + `for:<person>`               |
 | Defer / tickler        | `t:YYYY-MM-DD` (dormant until that date)  |
 | Hard due date          | `due:YYYY-MM-DD`                          |
+| Dependency / sequence  | `id:<key>` on a prerequisite, `after:<key>` on the task that waits for it (blocked, hidden from next actions, until the prerequisite is done) |
 | Someday / Maybe        | a line in `someday.txt`                   |
 | Reference              | a line in `reference.txt`                 |
 
@@ -38,20 +39,40 @@ written by other todo.txt tools round-trip untouched.
 ## Files in the data directory
 
 `todo.txt` (active), `done.txt` (completed archive), `someday.txt`,
-`reference.txt`, and `backups/` (last 50 pre-write snapshots per file).
+`reference.txt`, `notes/` (free-form per-item notes, one file per `note:<key>`
+tag), and `backups/` (last 50 pre-write snapshots per file).
 
 ## HTTP surface
 
 Web (same-origin, browser): `/`, `/capture`, `/process`, `/next`, `/contexts`,
-`/waiting`, `/projects`. JSON (CLI): `GET /api/tasks?view=next|inbox|waiting|all&context=`,
-`POST /api/capture`, `POST /api/done`. All mutating requests must be same-origin
-or carry the `X-GTD-Client` header (CSRF defense); the CLI sets it automatically.
+`/waiting`, `/projects`, `/project?name=` (one project's plan; `/project/add`
+appends a task, optionally blocked by another), `/done` (completed; POST also
+completes a task), `/restore`, `/edit`, `/undo`, `/redo`, `/raw`, `/help`. JSON
+(CLI): `GET /api/tasks?view=next|inbox|waiting|done|all&context=&project=`,
+`GET /api/projects`, `POST /api/capture`, `POST /api/done`, `POST /api/edit`,
+`POST /api/restore`, `POST /api/undo`, `POST /api/redo`. All
+mutating requests must be same-origin or carry the `X-GTD-Client` header (CSRF
+defense); the CLI sets it automatically.
+
+Mutations keep a single-level, whole-store **undo** point (a snapshot of every
+file taken before each write); `POST /undo` restores it, and `POST /redo`
+reapplies an undo (the pre-undo state is snapshotted too). In the web UI the
+undo/redo affordance is transient — offered only on the page you land on right
+after an action (via a one-shot `?undo=1`/`?redo=1` redirect flag), not a
+persistent control, so it can't be mis-tapped from the nav. Notes live in their own
+files so they may be multi-line; only the short `note:<key>` pointer sits on the
+todo.txt line, and it's hidden from the displayed text.
 
 ## Develop
 
 ```
 cd apps/gtd
-go test ./...                       # parser + GTD view unit tests
+go test ./...                       # unit, integration, CLI, concurrency & fuzz-seed tests
+go test -race ./...                 # exercise the store's locking (the concurrency
+                                    # tests are written for this; needs CGO, so it's a
+                                    # dev-only command — the Nix build gate stays CGO-free)
+go test -run=Fuzz ./internal/todotxt              # run the fuzz seed corpora as plain tests
+go test -fuzz=FuzzParseRoundTrip ./internal/todotxt   # actively fuzz the parser (Ctrl-C to stop)
 go run ./cmd/gtd-server -dir /tmp/gtd -addr 127.0.0.1:8730
 GTD_ENDPOINT=http://127.0.0.1:8730 go run ./cmd/gtd add "try it out"
 ```

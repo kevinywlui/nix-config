@@ -41,7 +41,7 @@ func do(t *testing.T, srv *server, method, target string, vals url.Values) *http
 
 func TestPagesRender(t *testing.T) {
 	srv, _ := newTestServer(t)
-	for _, p := range []string{"/", "/capture", "/process", "/next", "/contexts", "/waiting", "/projects"} {
+	for _, p := range []string{"/", "/capture", "/process", "/next", "/contexts", "/waiting", "/projects", "/done", "/help"} {
 		if rec := do(t, srv, "GET", p, nil); rec.Code != 200 {
 			t.Errorf("GET %s = %d, want 200; body=%s", p, rec.Code, rec.Body.String())
 		}
@@ -108,7 +108,7 @@ func TestClarifyValidation(t *testing.T) {
 
 func TestMutatingEndpointsRejectGET(t *testing.T) {
 	srv, _ := newTestServer(t)
-	for _, p := range []string{"/process/do", "/done"} {
+	for _, p := range []string{"/process/do", "/undo", "/redo", "/restore"} {
 		if rec := do(t, srv, "GET", p, nil); rec.Code != http.StatusMethodNotAllowed {
 			t.Errorf("GET %s = %d, want 405", p, rec.Code)
 		}
@@ -178,6 +178,451 @@ func TestClarifyAllDestinations(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Editing changes only the description, leaving the task's place and its
+// structured fields (here, the creation date) untouched.
+func TestEditFlow(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"Call dentits"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"calls"}})
+
+	before, _ := store.Read(todotxt.ActiveFile)
+	created := before[0].Created
+	if created == "" {
+		t.Fatal("captured task should carry a creation date to preserve")
+	}
+
+	// The edit form is reachable and prefilled with the current text.
+	if b := do(t, srv, "GET", "/edit?id=0&back=/next", nil).Body.String(); !strings.Contains(b, "Call dentits") {
+		t.Fatalf("edit form missing current text; got %s", b)
+	}
+
+	if rec := do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"Call dentist @calls"}, "back": {"/next"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("edit = %d, want 303", rec.Code)
+	}
+	after, _ := store.Read(todotxt.ActiveFile)
+	if len(after) != 1 || after[0].Text != "Call dentist @calls" {
+		t.Fatalf("edit did not replace the text: %v", after)
+	}
+	if after[0].Created != created {
+		t.Errorf("edit clobbered the creation date: %q -> %q", created, after[0].Created)
+	}
+}
+
+// The edit form offers the Clarify controls: a name in "waiting on" marks the
+// item @waiting with a for: tag, and the date fields set due:/t:.
+func TestEditStructuredFields(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"ask Bob about the report"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"calls"}})
+
+	if rec := do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"ask Bob about the report @calls"},
+		"person": {"bob"}, "due": {"2026-07-01"}, "back": {"/next"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("edit = %d, want 303", rec.Code)
+	}
+	active, _ := store.Read(todotxt.ActiveFile)
+	got := active[0]
+	if !got.HasContext("waiting") || got.Tag("for") != "bob" {
+		t.Errorf("waiting-on not applied: %q", got.Text)
+	}
+	if got.Tag("due") != "2026-07-01" {
+		t.Errorf("due not applied: %q", got.Text)
+	}
+}
+
+// Notes are attached via a note: pointer tag and stored in their own file; the
+// long key never shows up in the displayed text, only a 📝 indicator.
+func TestEditNotes(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"plan the trip"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"computer"}})
+
+	note := "Flights: see link\nHotel: the one near the park"
+	do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"plan the trip @computer"}, "notes": {note}, "back": {"/next"},
+	})
+
+	active, _ := store.Read(todotxt.ActiveFile)
+	key := active[0].Tag("note")
+	if key == "" {
+		t.Fatal("note tag was not attached to the task")
+	}
+	stored, _ := store.ReadNote(key)
+	if stored != note {
+		t.Errorf("note content = %q, want %q", stored, note)
+	}
+	// The next list shows the 📝 flag but never the raw note key.
+	b := do(t, srv, "GET", "/next", nil).Body.String()
+	if !strings.Contains(b, "📝") {
+		t.Error("next list should show a note indicator")
+	}
+	if strings.Contains(b, "note:"+key) {
+		t.Error("raw note key leaked into the rendered list")
+	}
+	// Re-editing prefills the note so it isn't lost.
+	if e := do(t, srv, "GET", "/edit?id=0&back=/next", nil).Body.String(); !strings.Contains(e, "near the park") {
+		t.Error("edit form should prefill the existing note")
+	}
+
+	// Clearing the notes field removes the tag and the file.
+	do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"plan the trip @computer"}, "notes": {""}, "back": {"/next"},
+	})
+	active, _ = store.Read(todotxt.ActiveFile)
+	if active[0].Tag("note") != "" {
+		t.Error("emptying notes should drop the note: tag")
+	}
+	if got, _ := store.ReadNote(key); got != "" {
+		t.Error("emptying notes should delete the note file")
+	}
+}
+
+// A newline in the edited text must be collapsed, never written through as a
+// second line that would forge an extra task in the file.
+func TestEditRejectsLineInjection(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"thing @home"}})
+
+	do(t, srv, "POST", "/edit", url.Values{
+		"id": {"0"}, "text": {"line one\nx forged done line"}, "back": {"/next"},
+	})
+	active, _ := store.Read(todotxt.ActiveFile)
+	if len(active) != 1 {
+		t.Fatalf("edit injected a line: active = %v", active)
+	}
+	if strings.Contains(active[0].Text, "\n") {
+		t.Errorf("newline survived into the task text: %q", active[0].Text)
+	}
+
+	// An all-whitespace edit is rejected, not silently blanked.
+	if rec := do(t, srv, "POST", "/edit", url.Values{"id": {"0"}, "text": {"   "}}); rec.Code != 400 {
+		t.Errorf("blank edit = %d, want 400", rec.Code)
+	}
+}
+
+// Undo is transient and scoped: it's offered only on the page you land on right
+// after an action (the redirect arms ?undo=1), not as a persistent control that
+// follows you around to be mis-tapped.
+func TestUndoIsTransientAndScoped(t *testing.T) {
+	srv, store := newTestServer(t)
+
+	rec := do(t, srv, "POST", "/capture", url.Values{"text": {"oops"}})
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "undo=1") {
+		t.Fatalf("capture redirect should arm undo; Location=%q", loc)
+	}
+
+	// The post-action page (carrying the flag) offers Undo...
+	if b := do(t, srv, "GET", "/capture?ok=1&undo=1", nil).Body.String(); !strings.Contains(b, "Undo that") {
+		t.Fatal("undo control missing on the post-action page")
+	}
+	// ...but a plain navigation does NOT, even though the store could still undo.
+	// This is the fix: no persistent button sitting in the thumb zone.
+	if !store.CanUndo() {
+		t.Fatal("precondition: the store should still be able to undo")
+	}
+	if b := do(t, srv, "GET", "/next", nil).Body.String(); strings.Contains(b, "Undo that") {
+		t.Fatal("undo control must not persist onto unrelated pages")
+	}
+
+	if rec := do(t, srv, "POST", "/undo", url.Values{}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("undo = %d, want 303", rec.Code)
+	}
+	if active, _ := store.Read(todotxt.ActiveFile); len(active) != 0 {
+		t.Fatalf("undo did not remove the captured item: %v", active)
+	}
+}
+
+// An accidental undo is one tap to recover: undo arms a redo, and redo reapplies
+// the change and re-arms undo (the two toggle).
+func TestUndoRedoRoundTrip(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"keep me"}})
+
+	rec := do(t, srv, "POST", "/undo", url.Values{})
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "redo=1") {
+		t.Fatalf("undo should arm redo; Location=%q", loc)
+	}
+	if active, _ := store.Read(todotxt.ActiveFile); len(active) != 0 {
+		t.Fatalf("undo should remove the item: %v", active)
+	}
+
+	// A page carrying redo=1 offers Redo and not Undo (undo is spent).
+	b := do(t, srv, "GET", "/?redo=1", nil).Body.String()
+	if !strings.Contains(b, "Redo that") || strings.Contains(b, "Undo that") {
+		t.Fatalf("redo page should show only Redo; got %s", b)
+	}
+
+	rec = do(t, srv, "POST", "/redo", url.Values{})
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "undo=1") {
+		t.Fatalf("redo should re-arm undo; Location=%q", loc)
+	}
+	active, _ := store.Read(todotxt.ActiveFile)
+	if len(active) != 1 || !strings.Contains(active[0].Text, "keep me") {
+		t.Fatalf("redo should bring the item back: %v", active)
+	}
+}
+
+// The inbox-emoji favicon is served from the embedded static FS and linked in
+// every page's head.
+func TestFavicon(t *testing.T) {
+	srv, _ := newTestServer(t)
+	rec := do(t, srv, "GET", "/static/favicon.svg", nil)
+	if rec.Code != 200 {
+		t.Fatalf("GET favicon = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "image/svg+xml") {
+		t.Errorf("favicon Content-Type = %q, want image/svg+xml", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "📥") {
+		t.Errorf("favicon should render the inbox emoji; got %s", rec.Body.String())
+	}
+	if b := do(t, srv, "GET", "/capture", nil).Body.String(); !strings.Contains(b, `rel="icon" href="/static/favicon.svg"`) {
+		t.Errorf("pages should link the favicon; got %s", b)
+	}
+}
+
+// Completing a task and then undoing must put it back on the active list and
+// out of done.txt in one step.
+func TestUndoRestoresCompletedTask(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"task"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"home"}})
+	do(t, srv, "POST", "/done", url.Values{"id": {"0"}, "back": {"/next"}})
+
+	do(t, srv, "POST", "/undo", url.Values{})
+	active, _ := store.Read(todotxt.ActiveFile)
+	done, _ := store.Read(todotxt.DoneFile)
+	if len(active) != 1 {
+		t.Errorf("undo of done: active = %v, want one task", active)
+	}
+	if len(done) != 0 {
+		t.Errorf("undo of done: done.txt = %v, want empty", done)
+	}
+}
+
+// Next actions can be filtered by project, and the projects screen links there
+// (not to the old dead /next?context= link).
+func TestNextFilterByProject(t *testing.T) {
+	srv, _ := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"buy tiles"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"errands"}})
+	do(t, srv, "POST", "/edit", url.Values{"id": {"0"}, "text": {"buy tiles @errands"}, "project": {"Reno"}})
+	do(t, srv, "POST", "/capture", url.Values{"text": {"email Sam"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"1"}, "decision": {"next"}, "context": {"computer"}})
+
+	// Filtered to +Reno: only the tiles task.
+	b := do(t, srv, "GET", "/next?project=Reno", nil).Body.String()
+	if !strings.Contains(b, "buy tiles") || strings.Contains(b, "email Sam") {
+		t.Fatalf("/next?project=Reno should show only the Reno task; got %s", b)
+	}
+	// The projects screen links into each project's planning page.
+	p := do(t, srv, "GET", "/projects", nil).Body.String()
+	if !strings.Contains(p, `href="/project?name=Reno"`) {
+		t.Errorf("projects screen should link to the project page; got %s", p)
+	}
+	// API parity.
+	a := do(t, srv, "GET", "/api/tasks?view=next&project=Reno", nil).Body.String()
+	if !strings.Contains(a, "buy tiles") || strings.Contains(a, "email Sam") {
+		t.Errorf("api project filter wrong; got %s", a)
+	}
+}
+
+// The project page lets you add tasks and chain them with dependencies: a
+// blocked task stays out of Next until its prerequisite is completed.
+func TestProjectPlanningWithDependencies(t *testing.T) {
+	srv, store := newTestServer(t)
+
+	// Add a first step, then a second blocked by it (the first task is index 0).
+	if rec := do(t, srv, "POST", "/project/add", url.Values{
+		"project": {"Reno"}, "text": {"measure the wall"}, "context": {"home"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("add first = %d, want 303", rec.Code)
+	}
+	if rec := do(t, srv, "POST", "/project/add", url.Values{
+		"project": {"Reno"}, "text": {"order cabinets"}, "context": {"calls"}, "after": {"0"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("add blocked = %d, want 303", rec.Code)
+	}
+
+	active, _ := store.Read(todotxt.ActiveFile)
+	if len(active) != 2 {
+		t.Fatalf("want 2 tasks, got %v", active)
+	}
+	// The prerequisite got an id:, the dependent an after: pointing at it.
+	depID := active[0].Tag("id")
+	if depID == "" || active[1].Tag("after") != depID {
+		t.Fatalf("dependency not linked: %q / %q", active[0].Text, active[1].Text)
+	}
+
+	// While blocked, "order cabinets" is not a next action; "measure" is.
+	next := do(t, srv, "GET", "/api/tasks?view=next", nil).Body.String()
+	if !strings.Contains(next, "measure the wall") || strings.Contains(next, "order cabinets") {
+		t.Fatalf("blocked task should be hidden from Next; got %s", next)
+	}
+	// The project page shows both, under Available and Blocked, and never leaks
+	// the raw id/after keys.
+	page := do(t, srv, "GET", "/project?name=Reno", nil).Body.String()
+	if !strings.Contains(page, "measure the wall") || !strings.Contains(page, "order cabinets") {
+		t.Fatalf("project page missing tasks; got %s", page)
+	}
+	if strings.Contains(page, "id:"+depID) || strings.Contains(page, "after:"+depID) {
+		t.Errorf("project page leaked raw dependency keys; got %s", page)
+	}
+
+	// Completing the prerequisite (index 0) unblocks the dependent.
+	if rec := do(t, srv, "POST", "/done", url.Values{"id": {"0"}, "back": {"/project?name=Reno"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("done = %d, want 303", rec.Code)
+	}
+	next = do(t, srv, "GET", "/api/tasks?view=next", nil).Body.String()
+	if !strings.Contains(next, "order cabinets") {
+		t.Fatalf("dependent should unblock once its prerequisite is done; got %s", next)
+	}
+}
+
+// Editing a task's wording preserves its (hidden) dependency link.
+func TestEditPreservesDependency(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/project/add", url.Values{"project": {"P"}, "text": {"first"}, "context": {"home"}})
+	do(t, srv, "POST", "/project/add", url.Values{"project": {"P"}, "text": {"second"}, "context": {"home"}, "after": {"0"}})
+
+	before, _ := store.Read(todotxt.ActiveFile)
+	want := before[1].Tag("after")
+	if want == "" {
+		t.Fatal("setup: second task should carry an after: tag")
+	}
+	// The edit form must not expose the raw after: key in its textbox.
+	form := do(t, srv, "GET", "/edit?id=1&back=/project?name=P", nil).Body.String()
+	if strings.Contains(form, "after:"+want) {
+		t.Errorf("edit box leaked the dependency key; got %s", form)
+	}
+	// Rewording the task keeps the dependency.
+	do(t, srv, "POST", "/edit", url.Values{"id": {"1"}, "text": {"second, reworded"}})
+	after, _ := store.Read(todotxt.ActiveFile)
+	if after[1].Tag("after") != want {
+		t.Errorf("edit dropped the after: tag: %q", after[1].Text)
+	}
+	if !strings.Contains(after[1].Text, "second, reworded") {
+		t.Errorf("edit did not apply new text: %q", after[1].Text)
+	}
+}
+
+// Assigning a project via the edit form adds the +tag (existing projects stay).
+func TestEditAddsProject(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"pick paint"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"errands"}})
+
+	do(t, srv, "POST", "/edit", url.Values{"id": {"0"}, "text": {"pick paint @errands"}, "project": {"Reno"}})
+	active, _ := store.Read(todotxt.ActiveFile)
+	if !active[0].HasProject("Reno") {
+		t.Fatalf("project not added: %q", active[0].Text)
+	}
+	// Idempotent: re-adding the same project doesn't duplicate it.
+	do(t, srv, "POST", "/edit", url.Values{"id": {"0"}, "text": {"pick paint @errands +Reno"}, "project": {"Reno"}})
+	active, _ = store.Read(todotxt.ActiveFile)
+	if got := strings.Count(active[0].Text, "+Reno"); got != 1 {
+		t.Errorf("project should appear once, got %d in %q", got, active[0].Text)
+	}
+}
+
+// The help screen explains the method and walks through the five GTD phases.
+func TestHelpScreen(t *testing.T) {
+	srv, _ := newTestServer(t)
+	b := do(t, srv, "GET", "/help", nil).Body.String()
+	for _, phase := range []string{"Capture", "Clarify", "Organize", "Reflect", "Engage"} {
+		if !strings.Contains(b, phase) {
+			t.Errorf("help screen missing the %q phase", phase)
+		}
+	}
+}
+
+// The Done screen lists completed tasks and Restore brings one back to the
+// active list, un-completed and out of done.txt.
+func TestDoneScreenAndRestore(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"Mop the floor"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"next"}, "context": {"home"}})
+	do(t, srv, "POST", "/done", url.Values{"id": {"0"}, "back": {"/next"}})
+
+	// The Done screen (GET /done) shows the completed item.
+	if b := do(t, srv, "GET", "/done", nil).Body.String(); !strings.Contains(b, "Mop the floor") {
+		t.Fatalf("done screen missing the completed task; got %s", b)
+	}
+
+	if rec := do(t, srv, "POST", "/restore", url.Values{"id": {"0"}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("restore = %d, want 303", rec.Code)
+	}
+	active, _ := store.Read(todotxt.ActiveFile)
+	done, _ := store.Read(todotxt.DoneFile)
+	if len(done) != 0 {
+		t.Errorf("restore left the task in done.txt: %v", done)
+	}
+	if len(active) != 1 || active[0].Done {
+		t.Fatalf("restore did not return an un-completed task: %v", active)
+	}
+	// It kept its real context, so it rejoins next actions.
+	if !active[0].HasContext("home") {
+		t.Errorf("restored task lost its context: %v", active[0])
+	}
+}
+
+// A task completed with no real context (a "do it now") must not vanish on
+// restore — it falls back to the inbox so it can be re-clarified.
+func TestRestoreContextlessGoesToInbox(t *testing.T) {
+	srv, store := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"two-minute thing"}})
+	do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"donow"}})
+
+	do(t, srv, "POST", "/restore", url.Values{"id": {"0"}})
+	active, _ := store.Read(todotxt.ActiveFile)
+	if len(active) != 1 || !active[0].HasContext("inbox") {
+		t.Fatalf("context-less restore should land in the inbox: %v", active)
+	}
+}
+
+// A blank capture is a no-op and must not flash "Captured." — the redirect
+// drops the ok=1 marker.
+func TestCaptureEmptyIsNoOp(t *testing.T) {
+	srv, store := newTestServer(t)
+	rec := do(t, srv, "POST", "/capture", url.Values{"text": {"   "}})
+	if loc := rec.Header().Get("Location"); loc != "/capture" {
+		t.Errorf("empty capture redirect = %q, want /capture (no ok=1)", loc)
+	}
+	if active, _ := store.Read(todotxt.ActiveFile); len(active) != 0 {
+		t.Errorf("empty capture should add nothing, got %v", active)
+	}
+}
+
+// The Clarify screen strips @inbox cleanly (token-exact, no leftover double
+// space) even when the marker sits mid-description.
+func TestProcessStripsInboxCleanly(t *testing.T) {
+	srv, _ := newTestServer(t)
+	do(t, srv, "POST", "/capture", url.Values{"text": {"email @inbox boss"}})
+	b := do(t, srv, "GET", "/process", nil).Body.String()
+	if !strings.Contains(b, "email boss") {
+		t.Errorf("expected cleanly-stripped 'email boss'; got %s", b)
+	}
+	if strings.Contains(b, "email  boss") {
+		t.Error("leftover double space from substring strip")
+	}
+}
+
+// The done API view matches the web Done screen: newest completion first.
+func TestAPIDoneNewestFirst(t *testing.T) {
+	srv, _ := newTestServer(t)
+	for _, txt := range []string{"first", "second"} {
+		do(t, srv, "POST", "/capture", url.Values{"text": {txt}})
+		do(t, srv, "POST", "/process/do", url.Values{"id": {"0"}, "decision": {"donow"}})
+	}
+	b := do(t, srv, "GET", "/api/tasks?view=done", nil).Body.String()
+	if strings.Index(b, "second") > strings.Index(b, "first") {
+		t.Errorf("done API should be newest-first (second before first); got %s", b)
 	}
 }
 

@@ -42,6 +42,127 @@ func TestTransferIsAtomicMove(t *testing.T) {
 	}
 }
 
+func TestUndoRollsBackLastMutation(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := New(dir)
+
+	if s.CanUndo() {
+		t.Fatal("a fresh store should have nothing to undo")
+	}
+	if err := s.Undo(); err != ErrNothingToUndo {
+		t.Fatalf("Undo on fresh store = %v, want ErrNothingToUndo", err)
+	}
+
+	// Append, then undo it: the file should be gone again (it didn't exist
+	// before the append).
+	if err := s.Append(ActiveFile, "buy milk @errands"); err != nil {
+		t.Fatal(err)
+	}
+	if !s.CanUndo() {
+		t.Fatal("CanUndo should be true after a mutation")
+	}
+	if err := s.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if active, _ := s.Read(ActiveFile); len(active) != 0 {
+		t.Errorf("after undoing the only append, active = %v, want empty", active)
+	}
+	if s.CanUndo() {
+		t.Error("undo is single-level: CanUndo should be false after undoing")
+	}
+
+	// A cross-file Transfer must undo as one step, restoring BOTH files.
+	s.Append(ActiveFile, "one @a")
+	s.Append(ActiveFile, "two @b")
+	if err := s.Transfer(ActiveFile, 0, DoneFile, func(x Task) Task { x.Done = true; return x }); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	active, _ := s.Read(ActiveFile)
+	done, _ := s.Read(DoneFile)
+	if len(active) != 2 || active[0].Text != "one @a" {
+		t.Errorf("transfer-undo did not restore active: %v", active)
+	}
+	if len(done) != 0 {
+		t.Errorf("transfer-undo did not roll back done.txt: %v", done)
+	}
+}
+
+// TestNoteKeyRejectsTraversal locks in the noteKeyRe guard: a key read from a
+// (user-editable) note: tag must never be able to escape the notes/ directory.
+// Without this, loosening the regex would silently reopen a path-traversal hole.
+func TestNoteKeyRejectsTraversal(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := New(dir)
+
+	// Traversal is blocked by disallowing the path separator (and whitespace/
+	// control/empty); dots alone are fine since key+".txt" can't escape the dir.
+	bad := []string{"../escape", "a/b", "", "a b", "x\ny", "foo/../bar", "/abs"}
+	for _, k := range bad {
+		if err := s.WriteNote(k, "data"); err == nil {
+			t.Errorf("WriteNote(%q) should be rejected", k)
+		}
+		if _, err := s.ReadNote(k); err == nil {
+			t.Errorf("ReadNote(%q) should be rejected", k)
+		}
+	}
+
+	// Nothing should have been written into (or above) the notes dir.
+	entries, _ := os.ReadDir(filepath.Join(dir, notesDir))
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".tmp-") {
+			t.Errorf("unexpected file in notes dir after rejected writes: %s", e.Name())
+		}
+	}
+
+	// A valid key still round-trips.
+	if err := s.WriteNote("20260615-150405.0", "hello"); err != nil {
+		t.Fatalf("valid WriteNote: %v", err)
+	}
+	if got, _ := s.ReadNote("20260615-150405.0"); got != "hello" {
+		t.Errorf("ReadNote = %q, want hello", got)
+	}
+}
+
+// Redo reapplies an undone change; undo/redo toggle, and a fresh mutation
+// invalidates the pending redo.
+func TestRedo(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := New(dir)
+
+	if err := s.Redo(); err != ErrNothingToRedo {
+		t.Fatalf("Redo with no prior undo = %v, want ErrNothingToRedo", err)
+	}
+
+	s.Append(ActiveFile, "buy milk @errands")
+	if err := s.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if active, _ := s.Read(ActiveFile); len(active) != 0 {
+		t.Fatalf("after undo, active = %v, want empty", active)
+	}
+	if !s.CanRedo() {
+		t.Fatal("CanRedo should be true after an undo")
+	}
+
+	if err := s.Redo(); err != nil {
+		t.Fatal(err)
+	}
+	if active, _ := s.Read(ActiveFile); len(active) != 1 || active[0].Text != "buy milk @errands" {
+		t.Fatalf("after redo, active = %v, want the item back", active)
+	}
+	// Redo re-arms undo (they toggle); a fresh mutation then clears redo.
+	if !s.CanUndo() {
+		t.Error("CanUndo should be true again after a redo")
+	}
+	s.Append(ActiveFile, "another @home")
+	if s.CanRedo() {
+		t.Error("a fresh mutation must invalidate the pending redo")
+	}
+}
+
 func TestAppendPreservesExistingContent(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := New(dir)

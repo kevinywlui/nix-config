@@ -97,6 +97,18 @@ func (t Task) String() string {
 // fields returns the whitespace-split description tokens.
 func (t Task) fields() []string { return strings.Fields(t.Text) }
 
+// DisplayText is the description with the app's internal pointer tags removed —
+// the note: key and the id:/after: dependency keys — so those opaque tokens
+// aren't shown to the user. Their meaning is surfaced separately (a 📝 flag, a
+// "blocked / after" line), not as raw text.
+func (t Task) DisplayText() string {
+	c := t
+	c.SetTag("note", "")
+	c.SetTag("id", "")
+	c.SetTag("after", "")
+	return c.Text
+}
+
 // Contexts returns the @context tokens (without the leading @), in order.
 func (t Task) Contexts() []string {
 	var out []string
@@ -138,6 +150,29 @@ func (t Task) HasContext(name string) bool {
 		}
 	}
 	return false
+}
+
+// HasProject reports whether the task carries +name.
+func (t Task) HasProject(name string) bool {
+	for _, p := range t.Projects() {
+		if p == name {
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveProject strips +name from Text.
+func (t *Task) RemoveProject(name string) {
+	toks := t.fields()
+	out := toks[:0]
+	for _, f := range toks {
+		if f == "+"+name {
+			continue
+		}
+		out = append(out, f)
+	}
+	t.Text = strings.Join(out, " ")
 }
 
 // sanitizeTagValue forces a value into the single-token shape tagRe accepts: a

@@ -1,0 +1,88 @@
+{{define "help"}}{{template "head" .}}
+<div class="help">
+<h1>How to use this app</h1>
+<p class="coach">Getting Things Done (GTD), David Allen's method, in a nutshell:
+your head is for <i>having</i> ideas, not <i>holding</i> them. Get every commitment
+out of your mind into one trusted system, decide what each one means, and keep
+lists you actually look at. The reward is "mind like water" — nothing nagging,
+because you trust the system to remember for you.</p>
+
+<p>This app is that system, stored as plain <a href="https://github.com/todotxt/todo.txt">todo.txt</a>
+files. The whole method is five steps; each one is a screen here.</p>
+
+<h2>1 · Capture <span class="badge">＋ Capture</span></h2>
+<p>Whenever something has your attention — a task, an idea, a worry — dump it into
+your <b>Inbox</b> on the <a href="/capture">Capture</a> screen. Don't organize, don't
+judge, don't even finish the thought. One item per capture, and move on. The only
+goal is to get it out of your head. Capture everything; you'll sort it out next.</p>
+
+<h2>2 · Clarify <span class="badge">⇄ Process</span></h2>
+<p>Later, empty the inbox on the <a href="/process">Process</a> screen. It hands you
+one item at a time and asks the only question that matters: <b>what is it, and is it
+actionable?</b></p>
+<ul>
+  <li><b>Not actionable?</b> Trash it, file it as <b>Reference</b> (worth keeping, no
+  action), or park it in <b>Someday / Maybe</b> (not now, don't forget).</li>
+  <li><b>Actionable and under two minutes?</b> <b>Do it now</b> and mark it done — chasing
+  it through the system would cost more than just doing it.</li>
+  <li><b>A single next action?</b> Name the very next <i>physical</i> step and the
+  <b>context</b> it belongs to. Optionally defer it or give it a hard due date.</li>
+  <li><b>A project</b> (more than one step)? Give it a tag and capture its very next
+  action — a project isn't something you "do," it's an outcome you move one action at
+  a time.</li>
+  <li><b>Waiting on someone else?</b> Hand it off and track who owes you what.</li>
+</ul>
+<p>Decide once, here, and the item leaves your inbox for good.</p>
+
+<h2>3 · Organize</h2>
+<p>Clarifying files each item into the right list automatically — you don't maintain
+these by hand:</p>
+<ul>
+  <li><b><a href="/next">Next actions</a></b>, grouped by <a href="/contexts">@context</a>
+  — the tools, places or people a task needs (<code>@calls</code>, <code>@computer</code>,
+  <code>@errands</code>, <code>@home</code>). A "next action" isn't a flag you set; it's
+  <i>any actionable task parked on a context</i>.</li>
+  <li><b><a href="/projects">Projects</a></b> — every multi-step outcome, flagged if it
+  has <i>no</i> next action so it can't quietly stall.</li>
+  <li><b><a href="/waiting">Waiting</a></b> — things others owe you.</li>
+  <li><b>Someday / Maybe</b> and <b>Reference</b> live in their own files, out of the way.</li>
+</ul>
+
+<h2>4 · Reflect</h2>
+<p>The system only stays trustworthy if you look at it. Glance at your
+<a href="/next">next actions</a> through the day, and once a week do a <b>review</b>:
+empty the inbox to zero, scan every list, and check the <a href="/projects">Projects</a>
+screen for anything <span class="badge warn">stalled</span> (a project with no next
+action). The <a href="/raw">Files</a> screen shows the exact todo.txt behind it all if
+you want to see precisely what's stored.</p>
+
+<h2>5 · Engage</h2>
+<p>Now just do the work with confidence. Open <a href="/next">Next</a>, pick the context
+you're in — at your computer, out running errands, on the phone — and choose from a short
+list of things you can actually do <i>right now</i>. No re-deciding, no overwhelm: the
+thinking already happened in Clarify.</p>
+
+<h2>Fixing things</h2>
+<ul>
+  <li>Tap <b>✎</b> next to any item to <b>edit</b> its wording or tags.</li>
+  <li>Made a mistake? An <b>↶ Undo last change</b> bar appears after any change and rolls
+  back the last one.</li>
+  <li>Completed actions live on the <a href="/done">Done</a> screen; <b>↩ Restore</b> brings
+  one back to your active lists if you finished it by accident.</li>
+</ul>
+
+<h2>The shorthand, if you're curious</h2>
+<p>Everything is stored as todo.txt, so any todo.txt tool can read it. The GTD ideas map
+to a few inline tokens:</p>
+<table class="maptable">
+  <tr><td><code>@inbox</code></td><td>unprocessed capture</td></tr>
+  <tr><td><code>@calls</code> <code>@home</code> …</td><td>context lists</td></tr>
+  <tr><td><code>+ProjectName</code></td><td>a multi-step project</td></tr>
+  <tr><td><code>@waiting</code> <code>for:alice</code></td><td>delegated / awaiting someone</td></tr>
+  <tr><td><code>t:2026-07-01</code></td><td>defer — dormant until that date</td></tr>
+  <tr><td><code>due:2026-07-01</code></td><td>hard due date</td></tr>
+</table>
+<p class="hint">You never have to type these — the Capture and Process screens add them for
+you — but you can if you like.</p>
+</div>
+{{template "foot" .}}{{end}}

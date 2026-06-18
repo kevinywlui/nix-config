@@ -1,0 +1,43 @@
+{{define "edit"}}{{template "head" .}}
+<h1>Edit item</h1>
+<p class="coach">Reword it, put it on a context, hand it off to someone, set dates, or
+jot notes &amp; references. Leave a field blank to clear it. The item keeps its place
+and completion state.</p>
+
+<form method="post" action="/edit" class="editform">
+  <input type="hidden" name="id" value="{{.Item.ID}}">
+  <input type="hidden" name="back" value="{{.Back}}">
+
+  <label class="lead">What it is
+    <input type="text" name="text" value="{{.Text}}" autofocus autocomplete="off" required></label>
+
+  <div class="subfields">
+    <label>On context (where/with what — makes it a next action)
+      <input type="text" name="context" placeholder="calls, computer, errands, home…" list="ctxlist"></label>
+    <label>Add to project
+      <input type="text" name="project" placeholder="KitchenReno" list="projlist"></label>
+    <label>Waiting on (hands it off — adds @waiting)
+      <input type="text" name="person" value="{{.Person}}" placeholder="alice"></label>
+    <div class="row">
+      <label>Defer until<input type="date" name="threshold" value="{{.Threshold}}"></label>
+      <label>Due date<input type="date" name="due" value="{{.Due}}"></label>
+    </div>
+  </div>
+
+  <label class="lead">Notes &amp; references
+    <textarea name="notes" rows="6" placeholder="Links, context, sub-steps, anything worth keeping with this item…">{{.Note}}</textarea></label>
+
+  <datalist id="ctxlist">
+    <option value="calls"><option value="computer"><option value="errands">
+    <option value="home"><option value="office"><option value="agenda">
+  </datalist>
+  <datalist id="projlist">
+    {{range .Projects}}<option value="{{.}}">{{end}}
+  </datalist>
+
+  <div class="row">
+    <button type="submit">Save</button>
+    <a class="btnlink" href="{{.Back}}">Cancel</a>
+  </div>
+</form>
+{{template "foot" .}}{{end}}
