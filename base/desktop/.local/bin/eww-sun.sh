@@ -25,7 +25,8 @@ fi
 
 # python prints ONLY the tooltip text (one UTF-8 line); jq wraps it below. A
 # compute failure (polar clamp, bad locale) yields empty stdout -> placeholder.
-tip=$(LAT="$LAT" LON="$LON" python3 <<'PY' 2>/dev/null || true
+tip=$(
+	LAT="$LAT" LON="$LON" python3 <<'PY' 2>/dev/null || true
 import math, os, time
 
 LAT = float(os.environ["LAT"])

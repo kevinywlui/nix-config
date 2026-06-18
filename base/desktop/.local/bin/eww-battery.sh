@@ -52,7 +52,7 @@ fmt_time() {
 # set indexed by pct/10; charging/full/alert/unknown get dedicated glyphs.
 # Codepoints in $'\U........' 8-hex-digit form (bash needs the full width for
 # the >U+FFFF MDI range).
-ramp=($'\U000f008e' $'\U000f007a' $'\U000f007b' $'\U000f007c' $'\U000f007d' \
+ramp=($'\U000f008e' $'\U000f007a' $'\U000f007b' $'\U000f007c' $'\U000f007d'
 	$'\U000f007e' $'\U000f007f' $'\U000f0080' $'\U000f0081' $'\U000f0082')
 g_full=$'\U000f0079'     # battery (full)
 g_alert=$'\U000f0083'    # battery-alert (critical)
