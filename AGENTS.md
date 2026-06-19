@@ -14,6 +14,13 @@ This project uses **`nh os build`** as the primary verification tool during deve
 - **What to check in the output:** No `error:` lines; no unexpected `- [package]` removals in the nvd diff. Version bumps and new packages are expected — silently removed packages must be investigated and resolved before proceeding.
 - **CWD:** `nh os build` works from any directory because `programs.nh.flake = dotfilesPath` is wired in `nix/modules/nixos/profiles/core.nix`. No `cd` required.
 
+## Git Sync Discipline
+This repo is edited from more than one machine and by cloud agents, so `main` drifts between sessions.
+
+- **Pull before starting work:** Begin every task by syncing the local `main` with `git pull` so you build on current state. This avoids the divergent-branch merge that results from committing on a stale base.
+- **Push when complete:** After the work is committed (and the build gate above has passed for any `.nix` changes), push to `origin/main` without waiting for the user.
+- **Resolve divergence by merge, not rebase:** If a pull reports divergent branches, merge (`git merge --no-edit origin/main`) rather than rewriting local commits. Always re-run the build gate after a merge that touches `.nix` files.
+
 ## Hosts
 This repository manages two NixOS hosts:
 
