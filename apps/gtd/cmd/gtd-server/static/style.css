@@ -1,8 +1,76 @@
-:root {
+/* Theme-independent design tokens. */
+:root { --radius: 12px; }
+
+/* ─── Themes ────────────────────────────────────────────────────────────────
+   A theme is a set of values for the palette tokens below. The server sets
+   data-theme on <html> (default "mocha"); each theme is a [data-theme] block so
+   it also re-scopes inside the appearance-page swatches (an element carrying
+   data-theme previews that theme regardless of the active page theme).
+
+   Token roles: --bg page · --panel/--panel2 cards & wells · --fg primary text ·
+   --sub secondary text · --muted faint text/borders accent · --accent links &
+   buttons · --on-accent text on an accent fill · --ok/--warn/--crit semantic
+   (success / attention / danger) with matching --*-bg fills · --line hairlines.
+   Every theme MUST set all of them. Keep each theme a bare single-attribute
+   [data-theme="x"] selector (no `html` prefix, no added specificity): the swatch
+   previews on /appearance rely on a nested data-theme re-scoping these vars by
+   proximity, which a more specific selector would defeat. */
+
+/* Mocha — default dark (Catppuccin Mocha). Also the bare-:root fallback. */
+:root,
+[data-theme="mocha"] {
   --bg: #0f1117; --panel: #1e1e2e; --panel2: #181825;
-  --fg: #cdd6f4; --muted: #6c7086; --sub: #a6adc8;
-  --accent: #89b4fa; --ok: #a6e3a1; --warn: #fab387; --crit: #f38ba8;
-  --radius: 12px;
+  --fg: #cdd6f4; --muted: #7f849c; --sub: #a6adc8;
+  --accent: #89b4fa; --on-accent: #11111b;
+  --ok: #a6e3a1; --warn: #fab387; --crit: #f38ba8;
+  --line: #313244; --warn-bg: #3a2a1a; --crit-bg: #2a1820;
+}
+
+/* Nord — dark (arctic blue-grey). */
+[data-theme="nord"] {
+  --bg: #2e3440; --panel: #3b4252; --panel2: #343b48;
+  --fg: #eceff4; --muted: #919db5; --sub: #d8dee9;
+  --accent: #88c0d0; --on-accent: #232831;
+  --ok: #a3d18a; --warn: #ebcb8b; --crit: #d98a92;
+  --line: #434c5e; --warn-bg: #3a3526; --crit-bg: #3a2c2f;
+}
+
+/* Gruvbox — dark (warm retro; semantics softened from terminal-saturated). */
+[data-theme="gruvbox"] {
+  --bg: #1d2021; --panel: #3c3836; --panel2: #32302f;
+  --fg: #ebdbb2; --muted: #a89984; --sub: #d5c4a1;
+  --accent: #83a598; --on-accent: #1d2021;
+  --ok: #b8bb26; --warn: #d8a657; --crit: #ea6962;
+  --line: #504945; --warn-bg: #3a3322; --crit-bg: #3a2422;
+}
+
+/* Latte — light (Catppuccin Latte; warn/accent darkened for AA on light bg). */
+[data-theme="latte"] {
+  --bg: #eff1f5; --panel: #ffffff; --panel2: #e0e3ec;
+  --fg: #4c4f69; --muted: #646785; --sub: #5c5f77;
+  --accent: #1856e0; --on-accent: #ffffff;
+  --ok: #2d7a1e; --warn: #bd3e0a; --crit: #c01030;
+  --line: #bcc1cd; --warn-bg: #fbe9d8; --crit-bg: #fbdde3;
+}
+
+/* Solarized Light — light. Page darkened to cream so white cards lift; text and
+   semantics darkened for AA, and ok pushed to true green (canonical olive/mustard
+   ok+warn read as two yellows). */
+[data-theme="solarized"] {
+  --bg: #f4ecd8; --panel: #fffbf0; --panel2: #e4ddc4;
+  --fg: #445a61; --muted: #62787a; --sub: #4e6066;
+  --accent: #1a6098; --on-accent: #ffffff;
+  --ok: #4d6b18; --warn: #876500; --crit: #bf2419;
+  --line: #c9c0a3; --warn-bg: #f5edc9; --crit-bg: #fbe2de;
+}
+
+/* GitHub Light — light (GitHub Primer). */
+[data-theme="github"] {
+  --bg: #ffffff; --panel: #f6f8fa; --panel2: #eaeef2;
+  --fg: #1f2328; --muted: #656d76; --sub: #424a53;
+  --accent: #0969da; --on-accent: #ffffff;
+  --ok: #1a7f37; --warn: #9a6700; --crit: #cf222e;
+  --line: #d0d7de; --warn-bg: #fff8c5; --crit-bg: #ffebe9;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-text-size-adjust: 100%; }
@@ -31,7 +99,7 @@ h1 { font-size: 1.4rem; margin-bottom: .6rem; display: flex; align-items: center
 .hint { color: var(--muted); font-size: .82rem; margin-top: .5rem; }
 .empty { color: var(--muted); padding: 1rem 0; }
 .flash { color: var(--ok); margin-bottom: 1rem; }
-.flash.err { color: var(--crit); background: #2a1820; padding: .7rem .9rem;
+.flash.err { color: var(--crit); background: var(--crit-bg); padding: .7rem .9rem;
   border-radius: var(--radius); border-left: 3px solid var(--crit); }
 .inboxnote { font-size: .9rem; margin-bottom: 1rem; }
 .inboxnote a { color: var(--accent); }
@@ -39,7 +107,7 @@ code { background: var(--panel); padding: .1em .35em; border-radius: 5px; font-s
 
 .badge { font-size: .72rem; background: var(--panel); color: var(--sub);
   padding: .15em .55em; border-radius: 999px; }
-.badge.warn { background: #3a2a1a; color: var(--warn); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
 
 /* Capture form */
 .capture { display: flex; gap: .5rem; margin: 1rem 0; }
@@ -47,16 +115,16 @@ code { background: var(--panel); padding: .1em .35em; border-radius: 5px; font-s
 input[type=text], input[type=date] {
   width: 100%; font-size: 1rem; padding: .7rem .8rem;
   background: var(--panel); color: var(--fg);
-  border: 1px solid #313244; border-radius: var(--radius);
+  border: 1px solid var(--line); border-radius: var(--radius);
 }
 button {
   font-size: 1rem; padding: .7rem 1.1rem; border: 0; border-radius: var(--radius);
-  background: var(--accent); color: #11111b; font-weight: 600; cursor: pointer;
+  background: var(--accent); color: var(--on-accent); font-weight: 600; cursor: pointer;
 }
 button:active { transform: translateY(1px); }
 
 .bigbtn { display: block; text-align: center; margin-top: 1.5rem;
-  background: var(--accent); color: #11111b; font-weight: 700;
+  background: var(--accent); color: var(--on-accent); font-weight: 700;
   padding: .9rem; border-radius: var(--radius); }
 
 /* Dashboard cards */
@@ -119,7 +187,7 @@ button:active { transform: translateY(1px); }
 /* Task lists */
 .tasks { list-style: none; }
 .tasks li { display: flex; gap: .7rem; align-items: center; padding: .7rem 0;
-  border-bottom: 1px solid #313244; }
+  border-bottom: 1px solid var(--line); }
 .check { background: transparent; border: 2px solid var(--muted); color: var(--ok);
   width: 2.2rem; height: 2.2rem; border-radius: 50%; padding: 0; flex: none; }
 .check.restore { color: var(--accent); }
@@ -157,14 +225,14 @@ button:active { transform: translateY(1px); }
 .editform .row { display: flex; gap: .6rem; align-items: flex-end; }
 .editform .subfields .row label { flex: 1; }
 .editform textarea { width: 100%; font-size: 1rem; padding: .7rem .8rem; resize: vertical;
-  background: var(--panel); color: var(--fg); border: 1px solid #313244; border-radius: var(--radius);
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: var(--radius);
   font-family: inherit; line-height: 1.5; }
 
 /* Transient undo/redo affordance — sits in the content flow at the top of the
    page right after an action (not a fixed control in the bottom thumb zone), so
    it can't be mis-tapped while reaching for the nav. */
 .actionbar { margin: 0 0 1rem; }
-.actionbar button { background: var(--panel); color: var(--fg); border: 1px solid #313244;
+.actionbar button { background: var(--panel); color: var(--fg); border: 1px solid var(--line);
   font-size: .85rem; padding: .45rem 1rem; }
 .actionbar.redo button { color: var(--accent); border-color: var(--accent); }
 
@@ -174,7 +242,7 @@ button:active { transform: translateY(1px); }
 
 .projects { list-style: none; }
 .projects li { display: flex; gap: .6rem; align-items: center; justify-content: space-between;
-  padding: .7rem 0; border-bottom: 1px solid #313244; }
+  padding: .7rem 0; border-bottom: 1px solid var(--line); }
 .projects li.stalled a { color: var(--warn); }
 .projects li.parked a { color: var(--sub); }
 
@@ -187,14 +255,14 @@ main h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--sub); }
 .projadd .row { display: flex; gap: .6rem; }
 .projadd .row label { flex: 1; display: block; font-size: .85rem; color: var(--sub); }
 .projadd select { width: 100%; font-size: 1rem; padding: .7rem .8rem; margin-top: .2rem;
-  background: var(--panel); color: var(--fg); border: 1px solid #313244; border-radius: var(--radius); }
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: var(--radius); }
 .projadd > button { width: 100%; margin-top: .8rem; }
 
 /* Raw file view */
 .rawtabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
 .rawtabs a { background: var(--panel2); color: var(--sub); padding: .4rem .8rem;
   border-radius: 999px; font-size: .82rem; }
-.rawtabs a.on { background: var(--accent); color: #11111b; font-weight: 600; }
+.rawtabs a.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 pre.raw { background: var(--panel2); color: var(--fg); padding: 1rem;
   border-radius: var(--radius); overflow-x: auto; font-size: .82rem; line-height: 1.6;
   white-space: pre-wrap; word-break: break-word; }
@@ -207,13 +275,35 @@ pre.raw { background: var(--panel2); color: var(--fg); padding: 1rem;
 .help li { margin-bottom: .45rem; color: var(--sub); }
 .help .badge { vertical-align: middle; }
 .maptable { width: 100%; border-collapse: collapse; margin: .4rem 0 .9rem; font-size: .9rem; }
-.maptable td { padding: .4rem .6rem; border-bottom: 1px solid #313244; vertical-align: top; }
+.maptable td { padding: .4rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 .maptable td:first-child { white-space: nowrap; color: var(--fg); }
 .maptable td:last-child { color: var(--sub); }
 
+/* Appearance / theme picker */
+.themegrid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin: .6rem 0 1.4rem; }
+.themecard { display: flex; flex-direction: column; gap: .6rem; margin: 0;
+  background: var(--panel2); border-radius: var(--radius); padding: .8rem;
+  border: 1px solid transparent; }
+.themecard.current { border-color: var(--accent); }
+.themecard button { width: 100%; background: var(--panel); color: var(--fg);
+  border: 1px solid var(--line); font-size: .9rem; font-weight: 600; }
+.themecard.current button { background: var(--accent); color: var(--on-accent);
+  border-color: var(--accent); cursor: default; }
+/* A swatch previews a theme's own colors: the data-theme attribute on this
+   element re-scopes the palette vars for its subtree. */
+.swatch { display: flex; height: 2.6rem; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--bg); }
+.swatch span { flex: 1; }
+.swatch .sw-bg { background: var(--bg); flex: 2; }
+.swatch .sw-panel { background: var(--panel); }
+.swatch .sw-accent { background: var(--accent); }
+.swatch .sw-ok { background: var(--ok); }
+.swatch .sw-warn { background: var(--warn); }
+.swatch .sw-crit { background: var(--crit); }
+
 /* Bottom tab bar (mobile) */
 .tabbar { position: fixed; bottom: 0; left: 0; right: 0;
-  display: flex; background: var(--panel2); border-top: 1px solid #313244;
+  display: flex; background: var(--panel2); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom); }
 .tabbar a { flex: 1; text-align: center; color: var(--sub); padding: .55rem 0;
   font-size: 1.3rem; display: flex; flex-direction: column; align-items: center; }

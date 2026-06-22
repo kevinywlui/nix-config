@@ -49,7 +49,8 @@ a read-only sequenced pass — inbox-to-zero, hard landscape, waiting, stalled
 projects, someday scan), `/next`, `/contexts`,
 `/waiting`, `/projects`, `/project?name=` (one project's plan; `/project/add`
 appends a task, optionally blocked by another), `/done` (completed; POST also
-completes a task), `/restore`, `/edit`, `/undo`, `/redo`, `/raw`, `/help`. JSON
+completes a task), `/restore`, `/edit`, `/undo`, `/redo`, `/raw`, `/appearance`
+(theme picker; `/theme` POST stores the choice in a cookie), `/help`. JSON
 (CLI): `GET /api/tasks?view=next|inbox|waiting|done|all&context=&project=`,
 `GET /api/projects`, `POST /api/capture`, `POST /api/done`, `POST /api/edit`,
 `POST /api/restore`, `POST /api/undo`, `POST /api/redo`. All
@@ -64,6 +65,28 @@ after an action (via a one-shot `?undo=1`/`?redo=1` redirect flag), not a
 persistent control, so it can't be mis-tapped from the nav. Notes live in their own
 files so they may be multi-line; only the short `note:<key>` pointer sits on the
 todo.txt line, and it's hidden from the displayed text.
+
+## Theming
+
+The UI ships six themes (dark: Mocha [default], Nord, Gruvbox; light: Latte,
+Solarized Light, GitHub Light), all tuned to WCAG AA contrast. A theme is just a
+set of CSS custom properties; the server stores the choice in a `theme` cookie and
+emits `data-theme="<id>"` on `<html>` (default when unset), so the whole thing is
+server-rendered and works with JS off. Colors never touch Go — only CSS.
+
+To add a theme:
+
+1. Add a `[data-theme="<id>"] { … }` block to `static/style.css` defining all the
+   palette tokens (copy an existing block; the comment above the theme blocks lists
+   the tokens and their roles). Keep it a bare single-attribute selector — the
+   `/appearance` swatch previews rely on a nested `data-theme` re-scoping the vars.
+2. Add a `themeInfo` entry to the `themes` registry in `cmd/gtd-server/server.go`
+   with the same `ID`, a display `Name`, `Dark` (for the picker's grouping), and
+   `BG` equal to that block's `--bg` (it drives the browser `theme-color` meta).
+
+`TestThemesMatchCSS` enforces that every registry entry has a matching CSS block
+and that `BG` equals the block's `--bg`. The default theme's `BG` is also mirrored
+in `static/manifest.json` (the PWA splash/chrome color); update both if it changes.
 
 ## Develop
 

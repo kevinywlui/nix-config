@@ -29,6 +29,67 @@ func today() string { return time.Now().Format("2006-01-02") }
 // review use for the "due soon" landscape bucket.
 func horizon() string { return time.Now().AddDate(0, 0, 7).Format("2006-01-02") }
 
+// themeInfo is one selectable appearance. The actual colors live in style.css as
+// [data-theme="<ID>"] blocks; the server only needs the ID (to validate the
+// cookie and emit data-theme), a display Name, whether it's Dark (for the
+// picker's grouping), and BG — the page background hex — to drive the browser
+// theme-color meta tag so the OS chrome matches.
+type themeInfo struct {
+	ID   string
+	Name string
+	Dark bool
+	BG   string
+}
+
+// themes is the registry rendered on the appearance page and validated against
+// the theme cookie. Each entry needs a matching style.css [data-theme="<ID>"]
+// block, and its BG must equal that block's --bg (it drives the browser
+// theme-color meta tag). The default's BG is also duplicated in manifest.json
+// (the PWA splash/chrome color) — update all three when changing it. defaultTheme
+// below is the one served when no cookie is set; init() enforces it's registered.
+var themes = []themeInfo{
+	{ID: "mocha", Name: "Mocha", Dark: true, BG: "#0f1117"},
+	{ID: "nord", Name: "Nord", Dark: true, BG: "#2e3440"},
+	{ID: "gruvbox", Name: "Gruvbox", Dark: true, BG: "#1d2021"},
+	{ID: "latte", Name: "Latte", Dark: false, BG: "#eff1f5"},
+	{ID: "solarized", Name: "Solarized Light", Dark: false, BG: "#f4ecd8"},
+	{ID: "github", Name: "GitHub Light", Dark: false, BG: "#ffffff"},
+}
+
+const defaultTheme = "mocha"
+
+// init enforces the invariant currentTheme relies on: the default must be a
+// registered theme, so a registry edit that drops or renames it fails loudly at
+// startup rather than silently emitting an empty data-theme that breaks the CSS.
+func init() {
+	if _, ok := themeByID(defaultTheme); !ok {
+		panic("gtd: defaultTheme " + defaultTheme + " is not in the themes registry")
+	}
+}
+
+// themeByID looks up a registered theme; ok is false for an unknown id (e.g. a
+// stale or tampered cookie), so callers fall back to the default.
+func themeByID(id string) (themeInfo, bool) {
+	for _, t := range themes {
+		if t.ID == id {
+			return t, true
+		}
+	}
+	return themeInfo{}, false
+}
+
+// currentTheme resolves the appearance for this request from the theme cookie,
+// falling back to the default when it's absent or unrecognised.
+func currentTheme(r *http.Request) themeInfo {
+	if c, err := r.Cookie("theme"); err == nil {
+		if t, ok := themeByID(c.Value); ok {
+			return t
+		}
+	}
+	t, _ := themeByID(defaultTheme)
+	return t
+}
+
 type server struct {
 	store *todotxt.Store
 	tmpl  *template.Template
@@ -54,6 +115,8 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.HandleFunc("/project", s.handleProject)
 	s.mux.HandleFunc("/project/add", s.handleProjectAdd)
 	s.mux.HandleFunc("/raw", s.handleRaw)
+	s.mux.HandleFunc("/appearance", s.handleAppearance)
+	s.mux.HandleFunc("/theme", s.handleThemeSet)
 	s.mux.HandleFunc("/help", s.handleHelp)
 	s.mux.HandleFunc("/done", s.handleDone)
 	s.mux.HandleFunc("/restore", s.handleRestore)
@@ -129,6 +192,15 @@ func (s *server) withCommon(r *http.Request, data any) any {
 	}
 	if _, set := m["Redo"]; !set {
 		m["Redo"] = q.Get("redo") == "1" && s.store.CanRedo()
+	}
+	// Appearance: every page's <html> carries data-theme and a matching browser
+	// theme-color, resolved from the theme cookie (default when unset).
+	th := currentTheme(r)
+	if _, set := m["Theme"]; !set {
+		m["Theme"] = th.ID
+	}
+	if _, set := m["ThemeColor"]; !set {
+		m["ThemeColor"] = th.BG
 	}
 	return m
 }
@@ -262,6 +334,54 @@ func normalizeText(s string) string {
 // It's GET-only content with no state, so it needs no CSRF check.
 func (s *server) handleHelp(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "help", nil)
+}
+
+// handleAppearance renders the theme picker, grouped dark vs light, marking the
+// active theme. GET-only and stateless (the choice lives in a cookie set by
+// /theme), so no CSRF check.
+func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
+	cur := currentTheme(r).ID
+	var dark, light []themeInfo
+	for _, t := range themes {
+		if t.Dark {
+			dark = append(dark, t)
+		} else {
+			light = append(light, t)
+		}
+	}
+	s.render(w, r, "appearance", map[string]any{"Dark": dark, "Light": light, "Current": cur})
+}
+
+// handleThemeSet persists the chosen theme in a long-lived cookie. It's a
+// state-changing POST (sets a cookie), so it takes the CSRF check; an unknown id
+// is rejected rather than silently stored, keeping the cookie always valid.
+func (s *server) handleThemeSet(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.csrfOK(r) {
+		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+		return
+	}
+	id := strings.TrimSpace(r.FormValue("theme"))
+	if _, ok := themeByID(id); !ok {
+		http.Error(w, "unknown theme", http.StatusBadRequest)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "theme",
+		Value:    id,
+		Path:     "/",
+		MaxAge:   60 * 60 * 24 * 365, // a year; the choice should just stick
+		HttpOnly: true,               // only the server reads it (to emit data-theme)
+		SameSite: http.SameSiteLaxMode,
+	})
+	back := strings.TrimSpace(r.FormValue("back"))
+	if back == "" {
+		back = "/appearance"
+	}
+	http.Redirect(w, r, safeBack(back), http.StatusSeeOther)
 }
 
 type counts struct {

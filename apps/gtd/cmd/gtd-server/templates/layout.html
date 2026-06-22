@@ -1,9 +1,9 @@
 {{define "head"}}<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{{.Theme}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f1117">
+<meta name="theme-color" content="{{.ThemeColor}}">
 <link rel="icon" href="/static/favicon.svg">
 <link rel="manifest" href="/static/manifest.json">
 <link rel="stylesheet" href="/static/style.css">
@@ -20,6 +20,7 @@
     <a href="/projects">Projects</a>
     <a href="/done">Done</a>
     <a href="/raw">Files</a>
+    <a href="/appearance">Theme</a>
     <a href="/help">Help</a>
   </nav>
 </header>

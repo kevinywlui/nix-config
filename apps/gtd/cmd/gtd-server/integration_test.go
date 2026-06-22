@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -41,7 +42,7 @@ func do(t *testing.T, srv *server, method, target string, vals url.Values) *http
 
 func TestPagesRender(t *testing.T) {
 	srv, _ := newTestServer(t)
-	for _, p := range []string{"/", "/capture", "/process", "/review", "/next", "/contexts", "/waiting", "/projects", "/done", "/help"} {
+	for _, p := range []string{"/", "/capture", "/process", "/review", "/next", "/contexts", "/waiting", "/projects", "/done", "/appearance", "/help"} {
 		if rec := do(t, srv, "GET", p, nil); rec.Code != 200 {
 			t.Errorf("GET %s = %d, want 200; body=%s", p, rec.Code, rec.Body.String())
 		}
@@ -148,6 +149,74 @@ func TestCaptureWithDetails(t *testing.T) {
 
 // The weekly review surfaces the inbox count, an overdue hard-landscape item, and
 // a stalled project on one read-only page, and writes nothing (no undo armed).
+// Each registered theme must have a matching style.css [data-theme] block whose
+// --bg equals the registry BG (BG drives the browser theme-color meta, and the
+// Go/CSS split is the mechanism's one real sync hazard). Also guards that the
+// default is registered — the invariant currentTheme relies on.
+func TestThemesMatchCSS(t *testing.T) {
+	if _, ok := themeByID(defaultTheme); !ok {
+		t.Fatalf("defaultTheme %q is not in the registry", defaultTheme)
+	}
+	data, err := staticFS.ReadFile("static/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(data)
+	bgRe := regexp.MustCompile(`--bg:\s*(#[0-9a-fA-F]+)`)
+	for _, th := range themes {
+		block := regexp.MustCompile(`\[data-theme="` + regexp.QuoteMeta(th.ID) + `"\][^{]*\{([^}]*)\}`).FindStringSubmatch(css)
+		if block == nil {
+			t.Errorf("theme %q has no [data-theme] block in style.css", th.ID)
+			continue
+		}
+		bg := bgRe.FindStringSubmatch(block[1])
+		if bg == nil {
+			t.Errorf("theme %q block defines no --bg", th.ID)
+			continue
+		}
+		if !strings.EqualFold(bg[1], th.BG) {
+			t.Errorf("theme %q: registry BG %s != CSS --bg %s", th.ID, th.BG, bg[1])
+		}
+	}
+}
+
+// Setting a theme cookie via /theme drives data-theme on every page; an unknown
+// id is rejected and a bad cookie falls back to the default.
+func TestThemeCookieFlow(t *testing.T) {
+	srv, _ := newTestServer(t)
+	// Default (no cookie) is the registered default.
+	if b := do(t, srv, "GET", "/", nil).Body.String(); !strings.Contains(b, `data-theme="`+defaultTheme+`"`) {
+		t.Errorf("no-cookie page should carry data-theme=%q", defaultTheme)
+	}
+	// POST /theme sets the cookie.
+	rec := do(t, srv, "POST", "/theme", url.Values{"theme": {"latte"}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("set theme = %d, want 303", rec.Code)
+	}
+	if ck := rec.Result().Cookies(); len(ck) == 0 || ck[0].Name != "theme" || ck[0].Value != "latte" {
+		t.Fatalf("expected a theme=latte cookie, got %v", rec.Result().Cookies())
+	}
+	// An unknown theme is rejected, not stored.
+	if rec := do(t, srv, "POST", "/theme", url.Values{"theme": {"bogus"}}); rec.Code != http.StatusBadRequest {
+		t.Errorf("unknown theme = %d, want 400", rec.Code)
+	}
+	// A request carrying the cookie renders that theme; a bad cookie falls back.
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: "theme", Value: "latte"})
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if !strings.Contains(w.Body.String(), `data-theme="latte"`) {
+		t.Error("theme cookie should drive data-theme")
+	}
+	req = httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: "theme", Value: "nope"})
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if !strings.Contains(w.Body.String(), `data-theme="`+defaultTheme+`"`) {
+		t.Error("a bad theme cookie should fall back to the default")
+	}
+}
+
 func TestReviewPage(t *testing.T) {
 	srv, store := newTestServer(t)
 	// A stalled project (a +project whose only task is still in the inbox), an

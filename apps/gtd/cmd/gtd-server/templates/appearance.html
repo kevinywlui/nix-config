@@ -1,0 +1,37 @@
+{{define "appearance"}}{{template "head" .}}
+<h1>Appearance</h1>
+<p class="coach">Pick a theme — it's remembered in this browser. Dark themes suit low light;
+light themes suit a bright room. Each swatch previews its own colors.</p>
+
+<h2 class="ctxhead">Dark</h2>
+<div class="themegrid">
+  {{$cur := .Current}}
+  {{range .Dark}}
+  <form method="post" action="/theme" class="themecard {{if eq .ID $cur}}current{{end}}">
+    <input type="hidden" name="theme" value="{{.ID}}">
+    <input type="hidden" name="back" value="/appearance">
+    <span class="swatch" data-theme="{{.ID}}">
+      <span class="sw-bg"></span><span class="sw-panel"></span><span class="sw-accent"></span>
+      <span class="sw-ok"></span><span class="sw-warn"></span><span class="sw-crit"></span>
+    </span>
+    <button type="submit"{{if eq .ID $cur}} disabled{{end}}>{{.Name}}{{if eq .ID $cur}} ✓{{end}}</button>
+  </form>
+  {{end}}
+</div>
+
+<h2 class="ctxhead">Light</h2>
+<div class="themegrid">
+  {{$cur := .Current}}
+  {{range .Light}}
+  <form method="post" action="/theme" class="themecard {{if eq .ID $cur}}current{{end}}">
+    <input type="hidden" name="theme" value="{{.ID}}">
+    <input type="hidden" name="back" value="/appearance">
+    <span class="swatch" data-theme="{{.ID}}">
+      <span class="sw-bg"></span><span class="sw-panel"></span><span class="sw-accent"></span>
+      <span class="sw-ok"></span><span class="sw-warn"></span><span class="sw-crit"></span>
+    </span>
+    <button type="submit"{{if eq .ID $cur}} disabled{{end}}>{{.Name}}{{if eq .ID $cur}} ✓{{end}}</button>
+  </form>
+  {{end}}
+</div>
+{{template "foot" .}}{{end}}
