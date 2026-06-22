@@ -16,7 +16,11 @@
 // lossy. Next-action-ness is derived from "has a context and is actionable now".
 package gtd
 
-import "github.com/kevinywlui/nix-config/apps/gtd/internal/todotxt"
+import (
+	"sort"
+
+	"github.com/kevinywlui/nix-config/apps/gtd/internal/todotxt"
+)
 
 // Reserved context names with special GTD meaning.
 const (
@@ -120,7 +124,7 @@ func Waiting(items []Item) []Item {
 // (after:) are excluded — they aren't actionable yet.
 func NextActions(items []Item, today, context, project string) []Item {
 	ids := ActiveIDs(items)
-	return filter(items, func(t todotxt.Task) bool {
+	out := filter(items, func(t todotxt.Task) bool {
 		if !IsNextAction(t, today) || IsBlocked(t, ids) {
 			return false
 		}
@@ -131,6 +135,22 @@ func NextActions(items []Item, today, context, project string) []Item {
 			return false
 		}
 		return true
+	})
+	sortByUrgency(out)
+	return out
+}
+
+// sortByUrgency orders next actions for the Engage view: anything with a hard
+// due date comes first, earliest date at the top (so overdue items lead);
+// undated actions keep their original relative order after them. Stable, so equal
+// keys never shuffle and the order stays deterministic for the JSON API too.
+func sortByUrgency(items []Item) {
+	sort.SliceStable(items, func(i, j int) bool {
+		di, dj := items[i].Task.Tag("due"), items[j].Task.Tag("due")
+		if (di == "") != (dj == "") {
+			return di != "" // a dated action sorts before an undated one
+		}
+		return di < dj // both dated: ascending; both undated: equal (keep order)
 	})
 }
 
@@ -225,6 +245,94 @@ func Projects(items []Item, today string) []Project {
 		out[i] = *acc[name]
 	}
 	return out
+}
+
+// Landscape buckets the time-sensitive next actions a daily dashboard and the
+// weekly review need to surface: ones whose tickler (t:) date is today — they've
+// just woken from the tickler and would otherwise rejoin Next with no signal —
+// and the hard-due buckets relative to today. Only actionable, unblocked next
+// actions are considered (the things you can actually act on).
+type Landscape struct {
+	Activated []Item // t: == today: just emerged from the tickler
+	Overdue   []Item // due: < today
+	DueToday  []Item // due: == today
+	DueSoon   []Item // today < due: <= the horizon (typically a week out)
+}
+
+// Total is the number of items across every bucket; Empty reports none, so a
+// dashboard can decide whether to show the hard-landscape banner at all.
+func (l Landscape) Total() int {
+	return len(l.Activated) + len(l.Overdue) + len(l.DueToday) + len(l.DueSoon)
+}
+
+// Empty reports a landscape with nothing time-sensitive to surface.
+func (l Landscape) Empty() bool { return l.Total() == 0 }
+
+// LandscapeFor computes the hard landscape as of today. horizon is the ISO date
+// bounding DueSoon (the caller, which has a clock, passes today+7 or similar);
+// ISO-8601 dates compare correctly as plain strings, so this stays a pure
+// derivation with no time dependency. Each due bucket is sorted by date ascending.
+func LandscapeFor(items []Item, today, horizon string) Landscape {
+	ids := ActiveIDs(items)
+	var l Landscape
+	for _, it := range items {
+		t := it.Task
+		if !IsNextAction(t, today) || IsBlocked(t, ids) {
+			continue
+		}
+		if t.Tag("t") == today {
+			l.Activated = append(l.Activated, it)
+		}
+		switch due := t.Tag("due"); {
+		case due == "":
+		case due < today:
+			l.Overdue = append(l.Overdue, it)
+		case due == today:
+			l.DueToday = append(l.DueToday, it)
+		case due <= horizon:
+			l.DueSoon = append(l.DueSoon, it)
+		}
+	}
+	sortByDue(l.Overdue)
+	sortByDue(l.DueToday)
+	sortByDue(l.DueSoon)
+	return l
+}
+
+// sortByDue orders items by their due: date ascending (stable).
+func sortByDue(items []Item) {
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].Task.Tag("due") < items[j].Task.Tag("due")
+	})
+}
+
+// ContextGroup is a context name with the next actions parked on it, for the
+// grouped Next view.
+type ContextGroup struct {
+	Name  string
+	Items []Item
+}
+
+// GroupByContext arranges already-selected next actions under each real context
+// they carry, in first-seen order, so the unfiltered Next page can show
+// per-context subheadings instead of one long list. An action on two contexts
+// appears under both (it genuinely belongs to each). Input is assumed already
+// filtered to next actions and ordered as the caller wants within each group.
+func GroupByContext(actions []Item) []ContextGroup {
+	idx := map[string]int{}
+	var groups []ContextGroup
+	for _, it := range actions {
+		for _, c := range realContexts(it.Task) {
+			i, ok := idx[c]
+			if !ok {
+				i = len(groups)
+				idx[c] = i
+				groups = append(groups, ContextGroup{Name: c})
+			}
+			groups[i].Items = append(groups[i].Items, it)
+		}
+	}
+	return groups
 }
 
 func filter(items []Item, pred func(todotxt.Task) bool) []Item {

@@ -69,6 +69,32 @@ button:active { transform: translateY(1px); }
 .card.warn { border-color: var(--warn); }
 .card.warn .num { color: var(--warn); }
 
+/* Hard-landscape banner (dashboard) — overdue/due-today/just-activated rollup. */
+.landbanner { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem;
+  background: var(--panel2); color: var(--sub); border-radius: var(--radius);
+  padding: .7rem 1rem; margin: 0 0 1rem; border-left: 3px solid var(--warn); }
+.landbanner b { color: var(--fg); }
+.landbanner.hot { border-left-color: var(--crit); }
+.landbanner.hot b { color: var(--crit); }
+.landbanner .arrow { margin-left: auto; color: var(--accent); }
+.reviewlink { margin-top: 1rem; font-size: .9rem; color: var(--sub); text-align: center; }
+
+/* Per-context subheadings on the unfiltered Next list. */
+.ctxhead { font-size: 1rem; margin: 1.2rem 0 .2rem; display: flex; align-items: center; gap: .5rem; }
+.ctxhead a { color: var(--accent); }
+
+/* Weekly review — a sequenced, read-only checklist. */
+.review { list-style: none; }
+.review .rev { background: var(--panel2); border-radius: var(--radius);
+  padding: 1rem 1.1rem; margin-bottom: .9rem; border-left: 3px solid var(--muted); }
+.review .rev.todo { border-left-color: var(--warn); }
+.review .rev h2 { font-size: 1.05rem; margin-bottom: .4rem; }
+.review .rev h3 { font-size: .85rem; color: var(--sub); text-transform: uppercase;
+  letter-spacing: .06em; margin: .8rem 0 .2rem; }
+.review .rev h3.rovdue { color: var(--crit); }
+.review .rev p { color: var(--sub); font-size: .92rem; }
+.review .tasks.compact li { padding: .45rem 0; }
+
 /* Clarify */
 .item { background: var(--panel2); border-radius: var(--radius);
   padding: 1rem; font-size: 1.15rem; margin-bottom: 1rem; border-left: 3px solid var(--accent); }

@@ -120,6 +120,86 @@ func TestBlockedDependencies(t *testing.T) {
 	}
 }
 
+// Next actions come back ordered: due-dated first (earliest, so overdue leads),
+// then undated in their original order.
+func TestNextActionsSortedByUrgency(t *testing.T) {
+	const today = "2026-06-15"
+	items := parseAll(
+		"undated first @computer",
+		"due next week @computer due:2026-06-22",
+		"overdue @calls due:2026-06-01",
+		"undated second @home",
+		"due today @errands due:2026-06-15",
+	)
+	na := NextActions(items, today, "", "")
+	got := make([]string, len(na))
+	for i, it := range na {
+		got[i] = it.Task.Tag("due")
+	}
+	// overdue, due-today, due-next-week, then the two undated (stable order).
+	want := []string{"2026-06-01", "2026-06-15", "2026-06-22", "", ""}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("urgency order = %v, want %v", got, want)
+		}
+	}
+	if na[3].Task.Text != "undated first @computer" || na[4].Task.Text != "undated second @home" {
+		t.Errorf("undated actions should keep original order, got %q then %q", na[3].Task.Text, na[4].Task.Text)
+	}
+}
+
+// LandscapeFor buckets next actions by tickler-activation and hard-due date.
+func TestLandscapeFor(t *testing.T) {
+	const today, horizon = "2026-06-15", "2026-06-22"
+	items := parseAll(
+		"woke today @home t:2026-06-15",                 // activated (t == today)
+		"overdue bill @calls due:2026-06-10",            // overdue
+		"due now @computer due:2026-06-15",              // due today
+		"soon @errands due:2026-06-20",                  // due soon (within horizon)
+		"later @home due:2026-07-30",                    // beyond horizon -> no bucket
+		"deferred @home t:2099-01-01 due:2026-06-10",    // dormant: not a next action, excluded
+		"x 2026-06-15 done @calls due:2026-06-01",       // done: excluded
+	)
+	l := LandscapeFor(items, today, horizon)
+	if len(l.Activated) != 1 || l.Activated[0].Task.Text != "woke today @home t:2026-06-15" {
+		t.Errorf("Activated = %v, want the t:today task", l.Activated)
+	}
+	if len(l.Overdue) != 1 || l.Overdue[0].Task.Tag("due") != "2026-06-10" {
+		t.Errorf("Overdue = %v, want the 06-10 task", l.Overdue)
+	}
+	if len(l.DueToday) != 1 {
+		t.Errorf("DueToday = %v, want 1", l.DueToday)
+	}
+	if len(l.DueSoon) != 1 || l.DueSoon[0].Task.Tag("due") != "2026-06-20" {
+		t.Errorf("DueSoon = %v, want the 06-20 task", l.DueSoon)
+	}
+	if l.Total() != 4 || l.Empty() {
+		t.Errorf("Total = %d (empty=%v), want 4", l.Total(), l.Empty())
+	}
+}
+
+// GroupByContext lists each next action under every real context it carries.
+func TestGroupByContext(t *testing.T) {
+	const today = "2026-06-15"
+	items := parseAll(
+		"A @computer",
+		"B @computer @errands", // appears under both
+		"C @calls",
+	)
+	groups := GroupByContext(NextActions(items, today, "", ""))
+	got := map[string]int{}
+	for _, g := range groups {
+		got[g.Name] = len(g.Items)
+	}
+	if got["computer"] != 2 || got["errands"] != 1 || got["calls"] != 1 {
+		t.Errorf("group counts = %v, want computer:2 errands:1 calls:1", got)
+	}
+	// First-seen order: computer, errands, calls.
+	if len(groups) != 3 || groups[0].Name != "computer" || groups[2].Name != "calls" {
+		t.Errorf("group order = %v, want computer,errands,calls", groups)
+	}
+}
+
 // A project with no next action is "stalled" only if nothing is waiting or
 // deferred; a waiting-only or deferred-only project is "parked", not stalled.
 func TestProjectParkedVsStalled(t *testing.T) {

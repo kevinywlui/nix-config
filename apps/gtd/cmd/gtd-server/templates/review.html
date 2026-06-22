@@ -1,0 +1,79 @@
+{{define "review"}}{{template "head" .}}
+<h1>Weekly review</h1>
+<p class="coach">GTD's <b>Reflect</b> step: once a week, walk every list top to bottom so the
+system stays trustworthy. Work down these in order — nothing here changes your data, it
+just shows you what needs a look.</p>
+
+{{$l := .Land}}
+
+<ol class="review">
+  <li class="rev {{if .Inbox}}todo{{end}}">
+    <h2>1 · Empty the inbox</h2>
+    {{if .Inbox}}
+      <p><b>{{len .Inbox}}</b> item{{if ne (len .Inbox) 1}}s{{end}} still to clarify.
+      <a href="/process">Process now →</a></p>
+    {{else}}<p>Inbox is at zero. 🎉</p>{{end}}
+  </li>
+
+  <li class="rev">
+    <h2>2 · Scan your next actions</h2>
+    <p><b>{{.NextCount}}</b> next action{{if ne .NextCount 1}}s{{end}} on your lists.
+    <a href="/next">Review them →</a> Anything stale or no longer relevant? Tap ✎ to retire it.</p>
+  </li>
+
+  <li class="rev {{if or $l.Overdue $l.DueToday}}todo{{end}}">
+    <h2>3 · Work the hard landscape</h2>
+    {{if $l.Empty}}<p>Nothing overdue, due today, or freshly activated. The calendar's clear.</p>{{else}}
+      {{if $l.Overdue}}<h3 class="rovdue">Overdue ({{len $l.Overdue}})</h3>{{template "revlist" $l.Overdue}}{{end}}
+      {{if $l.DueToday}}<h3>Due today ({{len $l.DueToday}})</h3>{{template "revlist" $l.DueToday}}{{end}}
+      {{if $l.Activated}}<h3>Just activated from the tickler ({{len $l.Activated}})</h3>{{template "revlist" $l.Activated}}{{end}}
+      {{if $l.DueSoon}}<h3>Due within a week ({{len $l.DueSoon}})</h3>{{template "revlist" $l.DueSoon}}{{end}}
+    {{end}}
+  </li>
+
+  <li class="rev">
+    <h2>4 · Chase what you're waiting on</h2>
+    {{if .Waiting}}
+      <p>Anyone gone quiet? Nudge them.</p>
+      {{template "revlist" .Waiting}}
+    {{else}}<p>Not waiting on anyone right now.</p>{{end}}
+  </li>
+
+  <li class="rev {{if .Stalled}}todo{{end}}">
+    <h2>5 · Get every project moving</h2>
+    {{if .Stalled}}
+      <h3 class="rovdue">Stalled — no next action ({{len .Stalled}})</h3>
+      <ul class="chips">{{range .Stalled}}<li><a href="/project?name={{.Name}}">+{{.Name}}</a></li>{{end}}</ul>
+    {{end}}
+    {{if .Parked}}
+      <h3>Parked — waiting / deferred / blocked ({{len .Parked}})</h3>
+      <ul class="chips">{{range .Parked}}<li><a href="/project?name={{.Name}}">+{{.Name}}</a></li>{{end}}</ul>
+    {{end}}
+    {{if and (not .Stalled) (not .Parked)}}<p>Every project has a next action. <a href="/projects">See all →</a></p>{{end}}
+  </li>
+
+  <li class="rev">
+    <h2>6 · Scan Someday / Maybe</h2>
+    {{if .SomedayLen}}
+      <p><b>{{.SomedayLen}}</b> item{{if ne .SomedayLen 1}}s{{end}} parked for later — anything ready to pull back in?
+      <a href="/raw?file=someday">Look them over →</a></p>
+    {{else}}<p>No Someday / Maybe items yet.</p>{{end}}
+  </li>
+</ol>
+
+<p class="coach">That's the loop. Inbox empty, lists current, projects moving, nothing waiting
+too long — mind like water.</p>
+{{template "foot" .}}{{end}}
+
+{{define "revlist"}}<ul class="tasks compact">
+  {{range .}}
+  <li>
+    <div class="body">
+      <span class="txt">{{.Task.DisplayText}}{{if .Task.Tag "note"}} <span class="noteflag" title="Has notes">📝</span>{{end}}</span>
+      {{if .Task.Tag "due"}}<span class="due">due {{.Task.Tag "due"}}</span>{{end}}
+      {{if .Task.Tag "for"}}<span class="who">waiting on {{.Task.Tag "for"}}</span>{{end}}
+    </div>
+    <a class="edit" href="/edit?id={{.ID}}&amp;back=/review" title="Edit">✎</a>
+  </li>
+  {{end}}
+</ul>{{end}}

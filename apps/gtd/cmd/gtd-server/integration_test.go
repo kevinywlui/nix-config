@@ -41,7 +41,7 @@ func do(t *testing.T, srv *server, method, target string, vals url.Values) *http
 
 func TestPagesRender(t *testing.T) {
 	srv, _ := newTestServer(t)
-	for _, p := range []string{"/", "/capture", "/process", "/next", "/contexts", "/waiting", "/projects", "/done", "/help"} {
+	for _, p := range []string{"/", "/capture", "/process", "/review", "/next", "/contexts", "/waiting", "/projects", "/done", "/help"} {
 		if rec := do(t, srv, "GET", p, nil); rec.Code != 200 {
 			t.Errorf("GET %s = %d, want 200; body=%s", p, rec.Code, rec.Body.String())
 		}
@@ -143,6 +143,36 @@ func TestCaptureWithDetails(t *testing.T) {
 	got := active[len(active)-1]
 	if !got.HasContext("waiting") || got.Tag("for") != "alice" || got.HasContext("inbox") {
 		t.Errorf("waiting capture not filed correctly: %q", got.Text)
+	}
+}
+
+// The weekly review surfaces the inbox count, an overdue hard-landscape item, and
+// a stalled project on one read-only page, and writes nothing (no undo armed).
+func TestReviewPage(t *testing.T) {
+	srv, store := newTestServer(t)
+	// A stalled project (a +project whose only task is still in the inbox), an
+	// overdue next action, and a leftover inbox item.
+	store.Append(todotxt.ActiveFile, "2026-01-01 plan the gala +Gala @inbox")
+	store.Append(todotxt.ActiveFile, "2020-01-01 file taxes @computer due:2020-04-15")
+	store.Append(todotxt.ActiveFile, "loose capture @inbox")
+
+	before, _ := store.Raw(todotxt.ActiveFile)
+	body := do(t, srv, "GET", "/review", nil).Body.String()
+	if !strings.Contains(body, "Weekly review") {
+		t.Fatal("review page missing heading")
+	}
+	if !strings.Contains(body, "Overdue") || !strings.Contains(body, "file taxes") {
+		t.Errorf("review should surface the overdue item:\n%s", body)
+	}
+	if !strings.Contains(body, "+Gala") {
+		t.Errorf("review should list the stalled project +Gala")
+	}
+	if !strings.Contains(body, "to clarify") {
+		t.Errorf("review should report a non-empty inbox")
+	}
+	// It's read-only: rendering must leave the file byte-for-byte unchanged.
+	if after, _ := store.Raw(todotxt.ActiveFile); string(after) != string(before) {
+		t.Error("review page must not mutate the store")
 	}
 }
 

@@ -5,6 +5,17 @@
 thing means, <b>Organize</b> it where it belongs, <b>Reflect</b> in a weekly review,
 and <b>Engage</b> — just do the next thing. Start by emptying your head into Capture.</p>
 
+{{$l := .Land}}
+{{if not $l.Empty}}
+<a class="landbanner {{if or $l.Overdue $l.DueToday}}hot{{end}}" href="/review">
+  {{if $l.Overdue}}<b>{{len $l.Overdue}}</b> overdue{{end}}
+  {{if $l.DueToday}}{{if $l.Overdue}} · {{end}}<b>{{len $l.DueToday}}</b> due today{{end}}
+  {{if $l.Activated}}{{if or $l.Overdue $l.DueToday}} · {{end}}<b>{{len $l.Activated}}</b> just activated{{end}}
+  {{if $l.DueSoon}}{{if or $l.Overdue $l.DueToday $l.Activated}} · {{end}}<b>{{len $l.DueSoon}}</b> due soon{{end}}
+  <span class="arrow">→</span>
+</a>
+{{end}}
+
 <div class="cards">
   <a class="card {{if $c.Inbox}}hot{{end}}" href="/process">
     <span class="num">{{$c.Inbox}}</span><span class="lbl">Inbox to process</span>
@@ -21,4 +32,5 @@ and <b>Engage</b> — just do the next thing. Start by emptying your head into C
 </div>
 
 <a class="bigbtn" href="/capture">＋ Capture something</a>
+<p class="reviewlink"><a href="/review">↻ Run a weekly review</a> — scan every list and get current.</p>
 {{template "foot" .}}{{end}}

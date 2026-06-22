@@ -44,7 +44,9 @@ tag), and `backups/` (last 50 pre-write snapshots per file).
 
 ## HTTP surface
 
-Web (same-origin, browser): `/`, `/capture`, `/process`, `/next`, `/contexts`,
+Web (same-origin, browser): `/`, `/capture`, `/process`, `/review` (weekly review:
+a read-only sequenced pass — inbox-to-zero, hard landscape, waiting, stalled
+projects, someday scan), `/next`, `/contexts`,
 `/waiting`, `/projects`, `/project?name=` (one project's plan; `/project/add`
 appends a task, optionally blocked by another), `/done` (completed; POST also
 completes a task), `/restore`, `/edit`, `/undo`, `/redo`, `/raw`, `/help`. JSON

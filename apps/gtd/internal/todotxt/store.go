@@ -123,13 +123,20 @@ func (s *Store) WriteNote(key, content string) error {
 		tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil { // flush bytes to disk before the rename publishes them
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmpName, 0o640); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	return fsyncDir(filepath.Join(s.dir, notesDir)) // persist the rename itself
 }
 
 // Read loads and parses the named file. A missing file is treated as empty.
@@ -289,13 +296,35 @@ func (s *Store) rawWriteLocked(name string, data []byte) error {
 		tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil { // flush bytes to disk before the rename publishes them
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmpName, 0o640); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	return fsyncDir(s.dir) // persist the rename itself so a crash can't lose it
+}
+
+// fsyncDir flushes a directory's entry changes (a rename or create) to disk. The
+// temp-file+rename dance is only atomic, not durable, until the directory itself
+// is synced: without this a crash or power loss right after rename can leave the
+// canonical file still pointing at its old (or absent) inode. A directory that
+// can't be opened/synced is reported, not swallowed, so a write claiming success
+// really is on disk.
+func fsyncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
 }
 
 // takeSnapshotLocked captures the current bytes of every managed file. Caller

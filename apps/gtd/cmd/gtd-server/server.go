@@ -25,6 +25,10 @@ var staticFS embed.FS
 
 func today() string { return time.Now().Format("2006-01-02") }
 
+// horizon returns the ISO date one week out, the bound the dashboard and weekly
+// review use for the "due soon" landscape bucket.
+func horizon() string { return time.Now().AddDate(0, 0, 7).Format("2006-01-02") }
+
 type server struct {
 	store *todotxt.Store
 	tmpl  *template.Template
@@ -42,6 +46,7 @@ func newServer(store *todotxt.Store) (*server, error) {
 	s.mux.HandleFunc("/capture", s.handleCapture)
 	s.mux.HandleFunc("/process", s.handleProcess)
 	s.mux.HandleFunc("/process/do", s.handleProcessDo)
+	s.mux.HandleFunc("/review", s.handleReview)
 	s.mux.HandleFunc("/next", s.handleNext)
 	s.mux.HandleFunc("/contexts", s.handleContexts)
 	s.mux.HandleFunc("/waiting", s.handleWaiting)
@@ -288,7 +293,12 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Projects: len(projs),
 		Stalled:  stalled,
 	}
-	s.render(w, r, "dashboard", map[string]any{"Counts": c})
+	s.render(w, r, "dashboard", map[string]any{
+		"Counts": c,
+		// Land drives the hard-landscape banner: overdue/due-today/just-activated
+		// items that would otherwise be just another line on Next.
+		"Land": gtd.LandscapeFor(items, t, horizon()),
+	})
 }
 
 func (s *server) handleCapture(w http.ResponseWriter, r *http.Request) {
@@ -528,6 +538,40 @@ func (s *server) moveOut(id int, dest string) error {
 	return s.store.Transfer(todotxt.ActiveFile, id, dest, stripInbox)
 }
 
+// handleReview is the weekly review (GTD's Reflect step): a single read-only page
+// that sequences the canonical pass — inbox to zero, scan Next, work the hard
+// landscape (overdue / due today / just-activated tickler items), chase stale
+// @waiting, land on stalled and parked projects, and a nudge to scan Someday. It
+// derives everything from the active list and writes nothing, so it sits outside
+// the undo model entirely.
+func (s *server) handleReview(w http.ResponseWriter, r *http.Request) {
+	items, err := s.activeItems()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	t := today()
+	var stalled, parked []gtd.Project
+	for _, p := range gtd.Projects(items, t) {
+		switch {
+		case p.Stalled():
+			stalled = append(stalled, p)
+		case p.Parked():
+			parked = append(parked, p)
+		}
+	}
+	someday, _ := s.store.Read(todotxt.SomedayFile)
+	s.render(w, r, "review", map[string]any{
+		"Inbox":      gtd.Inbox(items),
+		"NextCount":  len(gtd.NextActions(items, t, "", "")),
+		"Land":       gtd.LandscapeFor(items, t, horizon()),
+		"Waiting":    gtd.Waiting(items),
+		"Stalled":    stalled,
+		"Parked":     parked,
+		"SomedayLen": len(someday),
+	})
+}
+
 func (s *server) handleNext(w http.ResponseWriter, r *http.Request) {
 	items, err := s.activeItems()
 	if err != nil {
@@ -536,14 +580,24 @@ func (s *server) handleNext(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.URL.Query().Get("context")
 	proj := r.URL.Query().Get("project")
-	s.render(w, r, "next", map[string]any{
-		"Items":   gtd.NextActions(items, today(), ctx, proj),
+	actions := gtd.NextActions(items, today(), ctx, proj)
+	data := map[string]any{
+		"Items":   actions,
 		"Context": ctx,
 		"Project": proj,
 		// Self is this page's own URL, used as the back target for the Done and
 		// Edit links so they return to the same filtered view.
 		"Self": nextURL(ctx, proj),
-	})
+	}
+	// On the unfiltered list, group rows under @context subheadings (an action on
+	// two contexts shows under both); a filtered view is already one context, so a
+	// single unnamed group renders as a plain list.
+	if ctx == "" && proj == "" {
+		data["Groups"] = gtd.GroupByContext(actions)
+	} else if len(actions) > 0 {
+		data["Groups"] = []gtd.ContextGroup{{Items: actions}}
+	}
+	s.render(w, r, "next", data)
 }
 
 // nextURL builds the /next URL for the given context/project filters, omitting

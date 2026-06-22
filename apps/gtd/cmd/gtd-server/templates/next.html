@@ -9,20 +9,23 @@ priority; just engage.</p>
   <a href="/process">Process your inbox</a> to create some.{{end}}</p>
 {{end}}
 
-<ul class="tasks">
-  {{range .Items}}
-  <li>
-    <form method="post" action="/done" class="doneform">
-      <input type="hidden" name="id" value="{{.ID}}">
-      <input type="hidden" name="back" value="{{$.Self}}">
-      <button type="submit" class="check" title="Mark done">✓</button>
-    </form>
-    <div class="body">
-      <span class="txt">{{.Task.DisplayText}}{{if .Task.Tag "note"}} <span class="noteflag" title="Has notes">📝</span>{{end}}</span>
-      {{if .Task.Tag "due"}}<span class="due">due {{.Task.Tag "due"}}</span>{{end}}
-    </div>
-    <a class="edit" href="/edit?id={{.ID}}&amp;back={{$.Self}}" title="Edit">✎</a>
-  </li>
-  {{end}}
-</ul>
+{{range .Groups}}
+  {{if .Name}}<h2 class="ctxhead"><a href="/next?context={{.Name}}">@{{.Name}}</a> <span class="badge">{{len .Items}}</span></h2>{{end}}
+  <ul class="tasks">
+    {{range .Items}}
+    <li>
+      <form method="post" action="/done" class="doneform">
+        <input type="hidden" name="id" value="{{.ID}}">
+        <input type="hidden" name="back" value="{{$.Self}}">
+        <button type="submit" class="check" title="Mark done">✓</button>
+      </form>
+      <div class="body">
+        <span class="txt">{{.Task.DisplayText}}{{if .Task.Tag "note"}} <span class="noteflag" title="Has notes">📝</span>{{end}}</span>
+        {{if .Task.Tag "due"}}<span class="due">due {{.Task.Tag "due"}}</span>{{end}}
+      </div>
+      <a class="edit" href="/edit?id={{.ID}}&amp;back={{$.Self}}" title="Edit">✎</a>
+    </li>
+    {{end}}
+  </ul>
+{{end}}
 {{template "foot" .}}{{end}}
