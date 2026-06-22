@@ -151,6 +151,33 @@ in
   services.syncthing = {
     enable = true;
     openDefaultPorts = false;
+    # Declarative topology, shared by both hosts. overrideDevices/overrideFolders
+    # default true, so Nix is the source of truth: devices/folders not listed here
+    # are reconciled away on rebuild. Device IDs are public key fingerprints, safe
+    # to commit. Each host ignores the device entry matching its own ID.
+    settings = {
+      devices = {
+        fw13.id = "KJZRSX3-NQGRAPW-VLWLH56-2QPI5YL-PIU74A6-5CI3WMT-W73OQXH-7FNT6AA";
+        t480.id = "HIYFUBV-VS6HDGP-XXCYS7O-5POSGVP-XFF34WJ-2P3OFWI-ZJ7K4WL-KAQYKAN";
+        boox.id = "TDJTJLV-EE64CEW-A7US4PS-DNA7T7E-TO7RUFJ-L7TDLCR-5NKTTKV-4QZCZQ3";
+        pixel9.id = "UKAORC7-Y6W2VPY-5BJJ4GN-CCXPJJS-2BGVGLT-CIVWCZ2-72QR32F-MB5BUAG";
+      };
+      folders = {
+        # `id` is pinned to the existing Syncthing folder IDs — these must match
+        # across all devices or syncing with boox/pixel9 silently breaks. Do not
+        # let the attribute name become the ID.
+        calibre = {
+          id = "h6hfd-nwrb7";
+          path = "/var/lib/syncthing/calibre";
+          devices = [ "fw13" "t480" "boox" "pixel9" ];
+        };
+        books = {
+          id = "vjsxd-7rtse";
+          path = "/var/lib/syncthing/books";
+          devices = [ "fw13" "t480" "boox" "pixel9" ];
+        };
+      };
+    };
   };
   networking.firewall.interfaces.tailscale0 = {
     # 22 = SSH, scoped to the tailnet only (mirrors the key-only openssh config
@@ -167,6 +194,7 @@ in
   systemd.tmpfiles.rules = [
     "d /var/lib/syncthing 0770 syncthing syncthing -"
     "d /var/lib/syncthing/books 0770 syncthing syncthing -"
+    "d /var/lib/syncthing/calibre 0770 syncthing syncthing -"
   ];
 
   services.btrfs.autoScrub = {
