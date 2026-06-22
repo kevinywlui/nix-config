@@ -84,6 +84,68 @@ func TestCaptureThenProcessAndClarify(t *testing.T) {
 	}
 }
 
+// Capture can carry the full set of Edit-style fields (context, project,
+// waiting-on, dates, notes) so an item is filed directly instead of waiting in
+// the inbox. A bare capture still lands in the inbox.
+func TestCaptureWithDetails(t *testing.T) {
+	srv, store := newTestServer(t)
+
+	// A context/due/notes capture files the item straight onto a context list,
+	// skipping the inbox, with the note stored in its own file.
+	note := "See thread from Friday\nAttach the Q2 numbers"
+	do(t, srv, "POST", "/capture", url.Values{
+		"text":    {"Email Bob the report"},
+		"context": {"computer"},
+		"due":     {"2026-07-01"},
+		"notes":   {note},
+	})
+	// A bare capture still parks in the inbox to be processed later.
+	do(t, srv, "POST", "/capture", url.Values{"text": {"Some loose thought"}})
+
+	active, _ := store.Read(todotxt.ActiveFile)
+	var filed, loose *todotxt.Task
+	for i := range active {
+		switch {
+		case strings.Contains(active[i].Text, "Email Bob"):
+			filed = &active[i]
+		case strings.Contains(active[i].Text, "loose thought"):
+			loose = &active[i]
+		}
+	}
+	if filed == nil || loose == nil {
+		t.Fatalf("both captures should persist: %v", active)
+	}
+	if !filed.HasContext("computer") || filed.HasContext("inbox") {
+		t.Errorf("detailed capture should be filed on @computer, not @inbox: %q", filed.Text)
+	}
+	if filed.Tag("due") != "2026-07-01" {
+		t.Errorf("due not applied: %q", filed.Text)
+	}
+	if filed.Created == "" {
+		t.Error("captured item should carry a creation date")
+	}
+	key := filed.Tag("note")
+	if key == "" {
+		t.Fatalf("note tag was not attached: %q", filed.Text)
+	}
+	if stored, _ := store.ReadNote(key); stored != note {
+		t.Errorf("note content = %q, want %q", stored, note)
+	}
+	if !loose.HasContext("inbox") {
+		t.Errorf("bare capture should land in the inbox: %q", loose.Text)
+	}
+
+	// Capturing someone to wait on files it onto @waiting, out of the inbox.
+	do(t, srv, "POST", "/capture", url.Values{
+		"text": {"Approval from finance"}, "person": {"alice"},
+	})
+	active, _ = store.Read(todotxt.ActiveFile)
+	got := active[len(active)-1]
+	if !got.HasContext("waiting") || got.Tag("for") != "alice" || got.HasContext("inbox") {
+		t.Errorf("waiting capture not filed correctly: %q", got.Text)
+	}
+}
+
 func TestClarifyValidation(t *testing.T) {
 	srv, _ := newTestServer(t)
 	do(t, srv, "POST", "/capture", url.Values{"text": {"something"}})

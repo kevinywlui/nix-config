@@ -300,7 +300,21 @@ func (s *server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		text := strings.TrimSpace(r.FormValue("text"))
 		dest := "/capture" // a blank submit is a no-op, not a "Captured." success
 		if text != "" {
-			if err := s.capture(text); err != nil {
+			f := func(k string) string { return strings.TrimSpace(r.FormValue(k)) }
+			notes := strings.TrimRight(r.FormValue("notes"), " \t\r\n")
+			if len(notes) > noteMax {
+				http.Error(w, "note too large", 400)
+				return
+			}
+			if err := s.captureItem(captureFields{
+				Text:      text,
+				Context:   f("context"),
+				Project:   f("project"),
+				Person:    f("person"),
+				Threshold: f("threshold"),
+				Due:       f("due"),
+				Notes:     notes,
+			}); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -314,17 +328,70 @@ func (s *server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		inbox = len(gtd.Inbox(items))
 	}
 	s.render(w, r, "capture", map[string]any{
-		"Saved": r.URL.Query().Get("ok") == "1",
-		"Inbox": inbox,
+		"Saved":    r.URL.Query().Get("ok") == "1",
+		"Inbox":    inbox,
+		"Projects": s.projectNames(),
 	})
 }
 
-// capture appends a raw inbox item with today's creation date.
+// captureFields is everything a capture submission can carry. Only Text is
+// required; the rest mirror the Edit form so an item can be filed completely at
+// capture time instead of being deferred to Process. They're all optional, so
+// quick capture stays a single field plus a button.
+type captureFields struct {
+	Text, Context, Project, Person, Threshold, Due, Notes string
+}
+
+// capture appends a bare inbox item — the quick-capture path used by the CLI's
+// JSON endpoint and a web submit with no details filled in.
 func (s *server) capture(text string) error {
-	t, _ := todotxt.Parse(text)
-	t.AddContext(gtd.ContextInbox)
+	return s.captureItem(captureFields{Text: text})
+}
+
+// captureItem appends a new active item from a capture submission, stamping
+// today's creation date. With no structured fields it lands in the inbox to be
+// processed later; setting a context, project, or person files it directly —
+// the inbox marker is added only when none of those gave it a home, matching how
+// the Edit form treats the same fields. A note is written to its own file and
+// linked by a note: tag, exactly as in editPost.
+func (s *server) captureItem(c captureFields) error {
+	notes := strings.TrimRight(c.Notes, " \t\r\n")
+	if len(notes) > noteMax {
+		return fmt.Errorf("note too large")
+	}
+	t, _ := todotxt.Parse(c.Text)
 	if t.Created == "" {
 		t.Created = today()
+	}
+	filed := false
+	if c.Context != "" {
+		t.AddContext(c.Context)
+		filed = true
+	}
+	if c.Project != "" {
+		t.AddProject(c.Project)
+		filed = true
+	}
+	if c.Person != "" {
+		t.AddContext(gtd.ContextWaiting)
+		t.SetTag("for", c.Person)
+		filed = true
+	}
+	if c.Due != "" {
+		t.SetTag("due", c.Due)
+	}
+	if c.Threshold != "" {
+		t.SetTag("t", c.Threshold)
+	}
+	if !filed { // nothing gave it a home — park it in the inbox for Process
+		t.AddContext(gtd.ContextInbox)
+	}
+	if notes != "" {
+		key := newNoteKey()
+		if err := s.store.WriteNote(key, notes); err != nil {
+			return err
+		}
+		t.SetTag("note", key)
 	}
 	return s.store.Append(todotxt.ActiveFile, t.String())
 }

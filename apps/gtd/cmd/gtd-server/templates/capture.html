@@ -11,11 +11,42 @@ Process. One thought per capture.</p>
   {{else}}Inbox empty — nothing waiting to process.{{end}}
 </p>
 
-<form method="post" action="/capture" class="capture">
-  <input type="text" name="text" placeholder="e.g. Call the dentist about that filling"
-         autofocus autocomplete="off" required>
-  <button type="submit">Capture</button>
+<form method="post" action="/capture" class="editform">
+  <div class="capture">
+    <input type="text" name="text" placeholder="e.g. Call the dentist about that filling"
+           autofocus autocomplete="off" required>
+    <button type="submit">Capture</button>
+  </div>
+  <p class="hint">Tip: you can type raw todo.txt if you like — <code>@context</code>,
+  <code>+project</code>, <code>due:2026-06-20</code> — but you don't have to.</p>
+
+  <details class="capturedetails">
+    <summary>Add details now (optional)</summary>
+    <p class="hint">Fill any of these to file the item straight away instead of leaving
+    it for Process. Set a context, project, or person and it skips the inbox.</p>
+    <div class="subfields">
+      <label>On context (where/with what — makes it a next action)
+        <input type="text" name="context" placeholder="calls, computer, errands, home…" list="ctxlist"></label>
+      <label>Add to project
+        <input type="text" name="project" placeholder="KitchenReno" list="projlist"></label>
+      <label>Waiting on (hands it off — adds @waiting)
+        <input type="text" name="person" placeholder="alice"></label>
+      <div class="row">
+        <label>Defer until<input type="date" name="threshold"></label>
+        <label>Due date<input type="date" name="due"></label>
+      </div>
+    </div>
+
+    <label class="lead">Notes &amp; references
+      <textarea name="notes" rows="6" placeholder="Links, context, sub-steps, anything worth keeping with this item…"></textarea></label>
+  </details>
+
+  <datalist id="ctxlist">
+    <option value="calls"><option value="computer"><option value="errands">
+    <option value="home"><option value="office"><option value="agenda">
+  </datalist>
+  <datalist id="projlist">
+    {{range .Projects}}<option value="{{.}}">{{end}}
+  </datalist>
 </form>
-<p class="hint">Tip: you can type raw todo.txt if you like — <code>@context</code>,
-<code>+project</code>, <code>due:2026-06-20</code> — but you don't have to.</p>
 {{template "foot" .}}{{end}}
