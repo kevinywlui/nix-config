@@ -82,31 +82,49 @@ window#clock {
 //                                    Darker than paused so it reads as "settled/done".
 //                                    #b57614 bg + #fbf1c7 text: legible at 11-13px.
 
+// Constant geometry across all four states — the pill never resizes as the
+// state changes:
+//   * min-width 92px fits the widest label ("OFF TONIGHT" / "PAUSED 120m",
+//     11 monospace chars at 13px ≈ 86px) so a shorter label like "DAY" pads
+//     out to the same box rather than shrinking the module.
+//   * a 2px border on every state keeps the box model identical; only the
+//     colours change. DAY's border is a near-invisible gray that just
+//     outlines the pill against the bar; the active states get a
+//     lighter-toned accent border that lifts the fill off the bar.
+
 .nightlight-off {
   padding: 0 12px;
   min-height: 32px;
+  min-width: 92px;
   background-color: transparent;
+  border: 2px solid rgba(146, 131, 116, 0.22);  // gruvbox gray, barely there
   color: #928374;     // gruvbox gray — recessive, doesn't compete with clock/audio
 }
 
 .nightlight-on {
   padding: 0 12px;
   min-height: 32px;
+  min-width: 92px;
   background-color: #cc241d;   // gruvbox bright red
+  border: 2px solid #fb4934;   // gruvbox bright-red light — accent edge
   color: #fbf1c7;               // gruvbox cream
 }
 
 .nightlight-paused {
   padding: 0 12px;
   min-height: 32px;
+  min-width: 92px;
   background-color: #d79921;   // gruvbox yellow-amber
+  border: 2px solid #fabd2f;   // gruvbox yellow light — accent edge
   color: #282828;               // gruvbox bg — dark text on amber
 }
 
 .nightlight-disabled {
   padding: 0 12px;
   min-height: 32px;
+  min-width: 92px;
   background-color: #b57614;   // gruvbox dark orange — deliberate, not broken
+  border: 2px solid #d79921;   // gruvbox yellow-amber — accent edge
   color: #fbf1c7;               // gruvbox cream — legible at 12px on this bg
 }
 
