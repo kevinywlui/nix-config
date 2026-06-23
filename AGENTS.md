@@ -38,11 +38,12 @@ Home Manager modules in this repository (`nix/modules/home/`) prefer **`mkOutOfS
 `dotfilesPath` (passed as a `specialArgs` value from `flake.nix`) is the literal absolute path `/home/klui/Code/nix-config` — not `self.outPath`. Two failure modes motivate the literal:
 
 1. **`mkOutOfStoreSymlink` would freeze.** Home Manager symlinks under `base/` are meant to track the live tree (see `base/README.md`). A `self.outPath` value bakes a `/nix/store` snapshot per generation, so edits to `base/` would only surface after a rebuild — defeating the entire cross-platform Stow strategy.
-2. **`NH_FLAKE` would go stale across shells.** `programs.nh.flake = "path:${dotfilesPath}"` is exported into every shell's environment. A per-eval `/nix/store/<hash>-source` value strands already-open shells on the prior generation's snapshot (cf. home-manager#8927). A byte-stable literal makes `NH_FLAKE` generation-invariant, so stale shells still hold the correct value.
+2. **`NH_FLAKE` would go stale across shells.** `programs.nh.flake = dotfilesPath` is exported into every shell's environment. A per-eval `/nix/store/<hash>-source` value strands already-open shells on the prior generation's snapshot (cf. home-manager#8927). A byte-stable literal makes `NH_FLAKE` generation-invariant, so stale shells still hold the correct value.
+
+`programs.nh.flake` is set to the bare `dotfilesPath` (no `path:` prefix). Nix auto-promotes a bare absolute path inside a git repo to `git+file:`, which is git-aware — so `inputs.self.rev`/`dirtyRev` are populated and the system label carries a real commit hash (see `nix/modules/nixos/profiles/system-label.nix`) instead of `-dirty`. **Tradeoff to be aware of:** `git+file:` copies tracked files (committed or locally modified) but **not** untracked ones, so a brand-new `.nix` file must be `git add`-ed before `nh os build` will see it.
 
 **Constraints for contributors:**
 - Do **not** revert `dotfilesPath` to `self.outPath`, `toString ./.`, or any expression whose value varies between evals.
-- Keep the `path:` prefix on `programs.nh.flake = "path:${dotfilesPath}"` — Nix auto-promotes bare absolute paths inside git repos to `git+file:`, which only sees committed HEAD and breaks the build-before-commit workflow.
 - If you relocate the working tree, update the literal in `flake.nix` *and* the `cloneTarget` literal in `nix/modules/nixos/profiles/core.nix`.
 - For helpers that need to *write* into the working tree at activation time (the `setup-dotfiles` bootstrap is the only one today), use a `$HOME`-relative shell literal — Nix string interpolation can't produce `$HOME`.
 

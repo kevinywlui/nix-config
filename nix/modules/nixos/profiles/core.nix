@@ -56,11 +56,13 @@ in
     enable = true;
     clean.enable = true;
     clean.extraArgs = "--keep-since 14d --keep 5";
-    # `path:` prefix is load-bearing: a bare absolute path inside a git
-    # repo is auto-promoted by Nix to `git+file:`, which only sees committed
-    # HEAD (breaking the build-before-commit workflow). `path:` forces
-    # working-tree snapshot semantics on every eval.
-    flake = "path:${dotfilesPath}";
+    # Bare absolute path: Nix auto-promotes it to `git+file:`, which is
+    # git-aware, so `inputs.self.rev`/`dirtyRev` are populated and the system
+    # label carries a real commit hash instead of `-dirty` (see
+    # profiles/system-label.nix). Tradeoff: `git+file:` copies tracked files
+    # (committed or modified) but NOT untracked ones — a brand-new `.nix` file
+    # must be `git add`-ed before `nh os build` will see it.
+    flake = dotfilesPath;
   };
 
   # Keep the weekly cadence + Persistent=true catch-up, but push the catch-up
