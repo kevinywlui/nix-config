@@ -169,7 +169,20 @@ code { background: var(--panel); padding: .1em .35em; border-radius: 5px; font-s
 
 /* Capture form */
 .capture { display: flex; gap: .5rem; margin: 1rem 0; }
-.capture input { flex: 1; }
+.capture input { flex: 1; min-width: 0; }
+
+/* Voice-capture mic button (injected by app.js only when the browser supports
+   speech recognition). Styled as a secondary control so the primary Capture CTA
+   stays dominant; while listening it turns critical-red, pulses, and swaps its
+   glyph to a stop square (so the state never rests on colour alone). */
+.micbtn { flex: none; background: var(--panel); color: var(--accent);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  font-size: 1.2rem; font-weight: normal; line-height: 1; padding: .7rem .9rem; }
+.micbtn.listening { background: var(--crit-bg); color: var(--crit);
+  border-color: var(--crit); animation: micpulse 1.2s ease-in-out infinite; }
+@keyframes micpulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .micbtn.listening { animation: none; } }
+.micstatus { margin-top: .4rem; }
 input[type=text], input[type=date] {
   width: 100%; font-size: 1rem; padding: .7rem .8rem;
   background: var(--panel); color: var(--fg);
