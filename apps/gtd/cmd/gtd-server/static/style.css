@@ -44,6 +44,34 @@
   --line: #504945; --warn-bg: #3a3322; --crit-bg: #3a2422;
 }
 
+/* Dracula — dark (vivid purple/pink; the canonical neon-on-charcoal palette). */
+[data-theme="dracula"] {
+  --bg: #282a36; --panel: #383a4f; --panel2: #2e303e;
+  --fg: #f8f8f2; --muted: #6272a4; --sub: #b8bcd4;
+  --accent: #bd93f9; --on-accent: #282a36;
+  --ok: #50fa7b; --warn: #ffb86c; --crit: #ff5c5c;
+  --line: #44475a; --warn-bg: #3a2f1f; --crit-bg: #3a2127;
+}
+
+/* Tokyo Night — dark (deep indigo; muted neon). */
+[data-theme="tokyonight"] {
+  --bg: #1a1b26; --panel: #24283b; --panel2: #1f2233;
+  --fg: #c0caf5; --muted: #565f89; --sub: #a9b1d6;
+  --accent: #7aa2f7; --on-accent: #16161e;
+  --ok: #9ece6a; --warn: #e0af68; --crit: #f7768e;
+  --line: #2f334d; --warn-bg: #33301f; --crit-bg: #341f29;
+}
+
+/* Rosé Pine — dark (muted mauve/rose; ok pulled to sage so it reads as success
+   against the rose-leaning accents). */
+[data-theme="rosepine"] {
+  --bg: #191724; --panel: #26233a; --panel2: #1f1d2e;
+  --fg: #e0def4; --muted: #6e6a86; --sub: #908caa;
+  --accent: #c4a7e7; --on-accent: #191724;
+  --ok: #a3be8c; --warn: #f6c177; --crit: #eb6f92;
+  --line: #403d52; --warn-bg: #36301f; --crit-bg: #342029;
+}
+
 /* Latte — light (Catppuccin Latte; warn/accent darkened for AA on light bg). */
 [data-theme="latte"] {
   --bg: #eff1f5; --panel: #ffffff; --panel2: #e0e3ec;
@@ -71,6 +99,36 @@
   --accent: #0969da; --on-accent: #ffffff;
   --ok: #1a7f37; --warn: #9a6700; --crit: #cf222e;
   --line: #d0d7de; --warn-bg: #fff8c5; --crit-bg: #ffebe9;
+}
+
+/* Everforest Light — light (warm sage/cream; page sat below the white cards, and
+   accent/semantics darkened for AA on the light bg). */
+[data-theme="everforest"] {
+  --bg: #f3eed9; --panel: #fdfaef; --panel2: #e8e3cb;
+  --fg: #45524f; --muted: #7d897b; --sub: #5c6a72;
+  --accent: #287059; --on-accent: #ffffff;
+  --ok: #4a6410; --warn: #9c5600; --crit: #bb352f;
+  --line: #d8d3b8; --warn-bg: #f3e7c9; --crit-bg: #f6ddd6;
+}
+
+/* Rosé Pine Dawn — light (the Rosé Pine companion; pine teal accent, ok pulled to
+   green and crit/warn darkened for AA on the rose-cream bg). */
+[data-theme="rosepinedawn"] {
+  --bg: #f7f0e8; --panel: #fffaf3; --panel2: #efe6dd;
+  --fg: #575279; --muted: #86819a; --sub: #6c6783;
+  --accent: #286983; --on-accent: #ffffff;
+  --ok: #54711f; --warn: #965f00; --crit: #b03a56;
+  --line: #e3dcd5; --warn-bg: #f6e6c9; --crit-bg: #f6dfe2;
+}
+
+/* Gruvbox Light — light (the Gruvbox companion; warm retro cream with the
+   palette's "faded" hard-contrast variants for AA on light). */
+[data-theme="gruvboxlight"] {
+  --bg: #f2e8c0; --panel: #fcf7e4; --panel2: #e9dcb5;
+  --fg: #3c3836; --muted: #7c6f64; --sub: #504945;
+  --accent: #076678; --on-accent: #fbf1c7;
+  --ok: #6e6a0c; --warn: #8f5a0e; --crit: #9d0006;
+  --line: #d6c9a4; --warn-bg: #f3e3b5; --crit-bg: #f3d9c9;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-text-size-adjust: 100%; }

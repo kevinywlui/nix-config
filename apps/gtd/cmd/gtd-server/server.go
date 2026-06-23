@@ -51,9 +51,15 @@ var themes = []themeInfo{
 	{ID: "mocha", Name: "Mocha", Dark: true, BG: "#0f1117"},
 	{ID: "nord", Name: "Nord", Dark: true, BG: "#2e3440"},
 	{ID: "gruvbox", Name: "Gruvbox", Dark: true, BG: "#1d2021"},
+	{ID: "dracula", Name: "Dracula", Dark: true, BG: "#282a36"},
+	{ID: "tokyonight", Name: "Tokyo Night", Dark: true, BG: "#1a1b26"},
+	{ID: "rosepine", Name: "Rosé Pine", Dark: true, BG: "#191724"},
 	{ID: "latte", Name: "Latte", Dark: false, BG: "#eff1f5"},
 	{ID: "solarized", Name: "Solarized Light", Dark: false, BG: "#f4ecd8"},
 	{ID: "github", Name: "GitHub Light", Dark: false, BG: "#ffffff"},
+	{ID: "everforest", Name: "Everforest Light", Dark: false, BG: "#f3eed9"},
+	{ID: "rosepinedawn", Name: "Rosé Pine Dawn", Dark: false, BG: "#f7f0e8"},
+	{ID: "gruvboxlight", Name: "Gruvbox Light", Dark: false, BG: "#f2e8c0"},
 }
 
 const defaultTheme = "mocha"

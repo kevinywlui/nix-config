@@ -68,8 +68,9 @@ todo.txt line, and it's hidden from the displayed text.
 
 ## Theming
 
-The UI ships six themes (dark: Mocha [default], Nord, Gruvbox; light: Latte,
-Solarized Light, GitHub Light), all tuned to WCAG AA contrast. A theme is just a
+The UI ships twelve themes (dark: Mocha [default], Nord, Gruvbox, Dracula, Tokyo
+Night, Rosé Pine; light: Latte, Solarized Light, GitHub Light, Everforest Light,
+Rosé Pine Dawn, Gruvbox Light), all tuned to WCAG AA contrast. A theme is just a
 set of CSS custom properties; the server stores the choice in a `theme` cookie and
 emits `data-theme="<id>"` on `<html>` (default when unset), so the whole thing is
 server-rendered and works with JS off. Colors never touch Go — only CSS.
