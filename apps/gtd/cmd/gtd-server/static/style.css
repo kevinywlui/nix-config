@@ -366,3 +366,28 @@ pre.raw { background: var(--panel2); color: var(--fg); padding: 1rem;
 .tabbar a { flex: 1; text-align: center; color: var(--sub); padding: .55rem 0;
   font-size: 1.3rem; display: flex; flex-direction: column; align-items: center; }
 .tabbar a span { font-size: .62rem; }
+
+/* "More" overflow menu — a native <details> tab (works with JS off) that surfaces
+   the secondary destinations carried by the top nav, which collapses on phones.
+   Its summary is styled to read as just another tab; the sheet opens upward. */
+.tabbar .moremenu { flex: 1; position: relative; }
+.tabbar summary { list-style: none; cursor: pointer; text-align: center;
+  color: var(--sub); padding: .55rem 0; font-size: 1.3rem;
+  display: flex; flex-direction: column; align-items: center; }
+.tabbar summary::-webkit-details-marker { display: none; }
+.tabbar summary span { font-size: .62rem; }
+.moresheet { position: absolute; bottom: 100%; right: .4rem; z-index: 10;
+  display: flex; flex-direction: column; min-width: 11rem; margin-bottom: .4rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  overflow: hidden; }
+.moresheet a { color: var(--fg); font-size: .95rem; padding: .8rem 1rem;
+  text-align: left; border-bottom: 1px solid var(--line); }
+.moresheet a:last-child { border-bottom: 0; }
+
+/* Two-tier responsive nav. The top nav is the desktop affordance: its nine links
+   overflow a phone viewport and force horizontal scroll (which also stretched the
+   fixed tab bar past the screen), so below the 640px content width it collapses
+   and the bottom tab bar — plus its More menu — takes over. Above the breakpoint
+   the top nav suffices, so the redundant More tab is hidden. */
+@media (max-width: 640px) { .topbar nav { display: none; } }
+@media (min-width: 641px) { .tabbar .moremenu { display: none; } }
