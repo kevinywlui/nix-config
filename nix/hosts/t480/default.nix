@@ -1,4 +1,4 @@
-{ pkgs, inputs, config, lib, ... }:
+{ pkgs, config, lib, ... }:
 
 let
   # Declarative Android SDK for building round-earth-project's bike-computer-android

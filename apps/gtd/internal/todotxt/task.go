@@ -162,19 +162,6 @@ func (t Task) HasProject(name string) bool {
 	return false
 }
 
-// RemoveProject strips +name from Text.
-func (t *Task) RemoveProject(name string) {
-	toks := t.fields()
-	out := toks[:0]
-	for _, f := range toks {
-		if f == "+"+name {
-			continue
-		}
-		out = append(out, f)
-	}
-	t.Text = strings.Join(out, " ")
-}
-
 // sanitizeTagValue forces a value into the single-token shape tagRe accepts: a
 // tag whose value carried whitespace (incl. a newline — a store line-injection
 // vector) or a colon would be unreadable by Tag and could corrupt the file, so

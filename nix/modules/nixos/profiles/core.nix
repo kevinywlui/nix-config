@@ -1,4 +1,4 @@
-{ pkgs, inputs, config, dotfilesPath, ... }:
+{ pkgs, inputs, dotfilesPath, ... }:
 
 let
   # setup-dotfiles clones into $HOME at activation time and needs a shell-

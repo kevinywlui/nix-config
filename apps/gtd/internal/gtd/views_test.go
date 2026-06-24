@@ -152,13 +152,13 @@ func TestNextActionsSortedByUrgency(t *testing.T) {
 func TestLandscapeFor(t *testing.T) {
 	const today, horizon = "2026-06-15", "2026-06-22"
 	items := parseAll(
-		"woke today @home t:2026-06-15",                 // activated (t == today)
-		"overdue bill @calls due:2026-06-10",            // overdue
-		"due now @computer due:2026-06-15",              // due today
-		"soon @errands due:2026-06-20",                  // due soon (within horizon)
-		"later @home due:2026-07-30",                    // beyond horizon -> no bucket
-		"deferred @home t:2099-01-01 due:2026-06-10",    // dormant: not a next action, excluded
-		"x 2026-06-15 done @calls due:2026-06-01",       // done: excluded
+		"woke today @home t:2026-06-15",              // activated (t == today)
+		"overdue bill @calls due:2026-06-10",         // overdue
+		"due now @computer due:2026-06-15",           // due today
+		"soon @errands due:2026-06-20",               // due soon (within horizon)
+		"later @home due:2026-07-30",                 // beyond horizon -> no bucket
+		"deferred @home t:2099-01-01 due:2026-06-10", // dormant: not a next action, excluded
+		"x 2026-06-15 done @calls due:2026-06-01",    // done: excluded
 	)
 	l := LandscapeFor(items, today, horizon)
 	if len(l.Activated) != 1 || l.Activated[0].Task.Text != "woke today @home t:2026-06-15" {
@@ -205,9 +205,9 @@ func TestGroupByContext(t *testing.T) {
 func TestProjectParkedVsStalled(t *testing.T) {
 	const today = "2026-06-15"
 	items := parseAll(
-		"call the vendor @waiting for:acme +deal",   // waiting-only
-		"kick off later t:2099-01-01 @home +reno",   // deferred-only
-		"abandoned thing +ghost",                    // no context => genuinely stuck
+		"call the vendor @waiting for:acme +deal", // waiting-only
+		"kick off later t:2099-01-01 @home +reno", // deferred-only
+		"abandoned thing +ghost",                  // no context => genuinely stuck
 	)
 	got := map[string]Project{}
 	for _, p := range Projects(items, today) {
