@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ lib, pkgs, ... }:
 
 {
   programs.sway = {
@@ -139,7 +139,6 @@
     let
       desktopTools = with pkgs; [
         google-chrome
-        blueman
         dunst
         udiskie
         libnotify
@@ -152,7 +151,6 @@
         swayidle
         swaybg
         eww
-        jq
         kanshi
         nwg-displays
         grim

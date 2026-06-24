@@ -1,4 +1,4 @@
-{ pkgs, lib, inputs, ... }:
+{ pkgs, lib, ... }:
 
 let
   # Weekly desktop nudge when fwupd has stable firmware updates. Reads the
