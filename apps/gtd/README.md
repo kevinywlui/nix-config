@@ -89,6 +89,26 @@ To add a theme:
 and that `BG` equals the block's `--bg`. The default theme's `BG` is also mirrored
 in `static/manifest.json` (the PWA splash/chrome color); update both if it changes.
 
+## Progressive enhancement (optional JS)
+
+The pages are fully server-rendered and work with JavaScript off; `static/app.js`
+only layers on conveniences, each injected at runtime so nothing dead renders when
+it's unavailable:
+
+- **Voice capture** — a mic button on the Capture field that dictates straight
+  into it via the browser's Web Speech API (`SpeechRecognition`), for adding a
+  task hands-light on a phone: tap, speak, Capture. It appends to whatever's
+  already typed and is injected only when the browser supports recognition **and**
+  the page is a secure context — the HTTPS Tailscale Serve endpoint qualifies; over
+  plain HTTP the button simply won't appear. **Privacy:** on most browsers,
+  including Android Chrome, recognition uploads the captured audio to the browser
+  vendor's cloud (e.g. Google) to transcribe it, so voice input does *not* stay on
+  your device or tailnet the way the rest of the app's data does — type instead for
+  anything sensitive. Markup/colors never touch Go.
+- **Quick-date buttons** beside every date field (Today / Tomorrow / +1 week).
+- **Ctrl/Cmd-Enter** submits the form you're in (uses `requestSubmit`, so the
+  required-field validation still fires).
+
 ## Develop
 
 ```
