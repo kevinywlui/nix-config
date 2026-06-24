@@ -13,7 +13,10 @@
     sops-nix.inputs.nixpkgs.follows = "nixpkgs-unstable";
   };
 
-  outputs = { self, nixpkgs, nixos-hardware, disko, home-manager, ... }@inputs:
+  # `self` is intentionally not destructured: it is unused as a direct binding
+  # (system-label reads it as `inputs.self`), and deadnix flags an unused
+  # `self`. The `@inputs` capture still includes it.
+  outputs = { nixpkgs, nixos-hardware, disko, home-manager, ... }@inputs:
     let
       # dotfilesPath is the live working tree as a literal absolute path.
       # DO NOT change to self.outPath — that freezes a /nix/store snapshot per

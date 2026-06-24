@@ -4,7 +4,7 @@
 # is deliberately stdlib-only, which is why `vendorHash = null` is correct (no
 # external dependency closure to pin). buildGoModule builds every `main` package
 # under cmd/, producing both binaries.
-inputs: final: prev: {
+_inputs: final: _prev: {
   gtd = final.buildGoModule {
     pname = "gtd";
     version = "0.1.0";

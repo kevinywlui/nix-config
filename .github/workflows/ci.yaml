@@ -21,7 +21,9 @@ jobs:
                               nixpkgs#gitleaks \
                               nixpkgs#shellcheck \
                               nixpkgs#shfmt \
-                              nixpkgs#nixpkgs-fmt
+                              nixpkgs#nixpkgs-fmt \
+                              nixpkgs#deadnix \
+                              nixpkgs#go
 
       - name: Run Pre-Commit
         # This runs all hooks defined in .pre-commit-config.yaml
