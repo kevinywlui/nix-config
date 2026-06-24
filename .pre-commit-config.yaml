@@ -39,6 +39,30 @@ repos:
         language: system
         types: [nix]
 
+      # Flags dead Nix: unused let-bindings and unused module/function
+      # arguments (e.g. an unused `config`/`inputs` in a `{ ... }:` header).
+      - id: deadnix
+        name: deadnix
+        entry: deadnix --fail
+        language: system
+        types: [nix]
+
+      # Go hooks scoped to apps/gtd. gofmt -w -l mirrors the shfmt hook above:
+      # it rewrites in place and lists what it touched, so pre-commit fails the
+      # run on any file it had to reformat.
+      - id: gofmt
+        name: gofmt
+        entry: gofmt -w -l
+        language: system
+        types: [go]
+
+      - id: go-vet
+        name: go vet
+        entry: bash -c 'cd apps/gtd && go vet ./...'
+        language: system
+        types: [go]
+        pass_filenames: false
+
       - id: nix-flake-check
         name: nix flake check
         entry: nix flake check --no-build
