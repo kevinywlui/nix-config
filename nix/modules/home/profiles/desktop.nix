@@ -94,13 +94,26 @@ in
       # a crash-respawn the bar/clock windows are gone until the watcher re-runs,
       # and Upholds= restarts an inactive-or-failed eww-bars with no delay.
       Upholds = [ "eww-bars.service" ];
+      # Survive the early-boot clock-sync race. When eww starts before
+      # systemd-timesyncd corrects the clock (the RTC can sit at a bogus past
+      # date), eww dies on the forward time jump with "second time provided was
+      # later than self". timesyncd's NTP correction lands ~45s into boot here,
+      # but the default limiter (5 starts / 10s) plus RestartSec=1s burns through
+      # all 5 retries in ~6s and gives up permanently — taking eww-bars down with
+      # it. Widen the window to 30 starts / 120s so the backoff below keeps
+      # retrying past the sync point; a genuinely broken config still fails the
+      # unit after ~60s of retries rather than masking the breakage forever.
+      StartLimitIntervalSec = "120s";
+      StartLimitBurst = 30;
     };
     Service = {
       # --no-daemonize keeps the daemon in the foreground so systemd tracks it as
       # the main process and Restart=on-failure can catch the segfault.
       ExecStart = "${pkgs.eww}/bin/eww daemon --no-daemonize";
       Restart = "on-failure";
-      RestartSec = "1s";
+      # 2s backoff: 30 starts at this cadence span ~60s, covering the ~45s
+      # clock-sync window with margin without hammering the CPU.
+      RestartSec = "2s";
     };
     Install = {
       WantedBy = [ "graphical-session.target" ];
