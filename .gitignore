@@ -5,3 +5,7 @@ result-*
 
 # Claude Code workflow scratch worktrees (isolation: 'worktree')
 .claude/worktrees/
+
+# Python bytecode
+__pycache__/
+*.pyc

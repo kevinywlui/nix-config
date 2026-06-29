@@ -18,3 +18,4 @@ inputs: final: prev: {
     config.allowUnfree = true;
   };
 } // (import ./gtd.nix inputs final prev)
+  // (import ./epub-toc.nix inputs final prev)

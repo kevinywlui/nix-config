@@ -37,7 +37,7 @@ in
   };
 
   systemd.user.services.calibre-books-view = {
-    Unit.Description = "Rebuild flat by-title copy view of Calibre library";
+    Unit.Description = "Rebuild flat by-title copy of Calibre library and add missing epub TOCs";
     Service = {
       Type = "oneshot";
       ExecStartPre = "${pkgs.coreutils}/bin/sleep 10";
@@ -70,6 +70,14 @@ in
             chmod 0644 "$BOOKS/$name"
           fi
         done
+
+        # Add a table of contents to any epub in the flat view that lacks one,
+        # so the e-readers (Boox, Pixel) get chapter navigation even when the
+        # source file shipped without it. epub-toc is idempotent — files that
+        # already have a TOC are left untouched — so re-running on every library
+        # change is cheap. We only touch the flat BOOKS copies here, never the
+        # Calibre-managed originals under "$CALIBRE".
+        ${pkgs.epub-toc}/bin/epub-toc --quiet "$BOOKS" || true
       '';
     };
   };

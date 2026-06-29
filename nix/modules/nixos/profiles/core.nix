@@ -125,6 +125,7 @@ in
       ];
 
       cliTools = with pkgs; [
+        epub-toc
         fd
         fzf
         gh
