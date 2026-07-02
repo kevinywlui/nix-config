@@ -8,6 +8,16 @@
   services.fwupd.enable = true;
   services.upower.enable = true;
 
+  # NMI watchdog causes periodic per-CPU wakeups and is only useful in
+  # server/debug contexts.
+  boot.kernelParams = [ "nmi_watchdog=0" ];
+  # Reduce writeback wakeups by stretching the flush interval from 5s to 15s.
+  boot.kernel.sysctl."vm.dirty_writeback_centisecs" = 1500;
+  # 60s lets the HDA codec runtime-suspend during silence so the package can
+  # reach deep C-states at idle; long enough to avoid pop/click at session
+  # start (vs TLP's 1s BAT default).
+  boot.extraModprobeConfig = "options snd_hda_intel power_save=60";
+
   services.tlp = {
     enable = true;
     settings = {
@@ -24,8 +34,11 @@
       PLATFORM_PROFILE_ON_AC = "performance";
       PLATFORM_PROFILE_ON_BAT = "low-power";
 
-      SOUND_POWER_SAVE_ON_AC = 0;
-      SOUND_POWER_SAVE_ON_BAT = 1;
+      # Match the snd_hda_intel power_save=60 modprobe option above on both
+      # rails — TLP rewrites the sysfs knob on AC/BAT transitions, and 0 on AC
+      # would keep the codec powered, pinning the package out of deep C-states.
+      SOUND_POWER_SAVE_ON_AC = 60;
+      SOUND_POWER_SAVE_ON_BAT = 60;
       SOUND_POWER_SAVE_CONTROLLER = "Y";
 
       PCIE_ASPM_ON_AC = "default";

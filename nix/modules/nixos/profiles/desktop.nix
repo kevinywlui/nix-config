@@ -33,7 +33,6 @@
   '';
 
   security.rtkit.enable = true;
-  hardware.firmware = [ pkgs.linux-firmware ];
 
   hardware.bluetooth = {
     enable = true;
@@ -119,8 +118,6 @@
       };
     };
   };
-
-  security.pam.services.greetd.fprintAuth = true;
 
   # uwsm launches the compositor as a systemd unit that does not inherit
   # home-manager's hm-session-vars.sh, so cursor env must be system-wide here

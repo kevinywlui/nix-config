@@ -35,8 +35,9 @@
         nixpkgs.config.android_sdk.accept_license = true;
       };
 
+      # No `system` argument: each host sets nixpkgs.hostPlatform in its
+      # hardware.nix, which is the modern equivalent.
       mkHost = { hwModule, hostModule }: nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
         specialArgs = { inherit inputs dotfilesPath; };
         modules = [
           nixpkgsConfig

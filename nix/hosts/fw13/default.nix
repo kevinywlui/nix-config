@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ pkgs, ... }:
 
 let
   # Weekly desktop nudge when fwupd has stable firmware updates. Reads the
@@ -40,11 +40,10 @@ in
   # NetworkManager-wait-online blocks boot until a connection is established,
   # which is too slow and unnecessary for interactive laptop use
   systemd.services.NetworkManager-wait-online.enable = false;
-  systemd.targets.network.wantedBy = [ "multi-user.target" ];
 
+  # nixos-hardware already defaults this on; kept as intent documentation.
+  # PAM fprintAuth (login/sudo/greetd) follows this option automatically.
   services.fprintd.enable = true;
-  security.pam.services.login.fprintAuth = true;
-  security.pam.services.sudo.fprintAuth = true;
 
   services.logind.settings.Login.HandleLidSwitch = "suspend";
 
@@ -54,39 +53,26 @@ in
   boot.loader.efi.canTouchEfiVariables = true;
   boot.loader.timeout = 1;
   # GPU params (amdgpu in initrd, PSR-hang workaround) come from
-  # nixos-hardware's framework-amd-ai-300-series module.
-  boot.kernelParams = [
-    "rng_core.default_quality=0" # stop hwrng from polling tpm-rng-0; entropy pool is kept full by RDRAND/RDSEED
-    "nmi_watchdog=0" # reduce CPU wakeups; NMI watchdog is only useful in server/debug contexts
-  ];
-  # 60s lets the HDA codec runtime-suspend during silence (the AMD HDA
-  # controller is driven by snd_hda_intel); short enough to avoid pop/click
-  # at session start.
-  boot.extraModprobeConfig = "options snd_hda_intel power_save=60";
-  # Reduce writeback wakeups by stretching the flush interval from 5s to 15s.
-  boot.kernel.sysctl."vm.dirty_writeback_centisecs" = 1500;
-  networking.interfaces.wlp192s0.wakeOnLan.enable = false;
+  # nixos-hardware's framework-amd-ai-300-series module. Shared power tweaks
+  # (nmi_watchdog=0, writeback interval, snd_hda_intel power_save) live in
+  # profiles/laptop-hardware.nix.
 
   # nixos-hardware's AMD module defaults power-profiles-daemon on, but nixpkgs
-  # asserts PPD and TLP are mutually exclusive. TLP wins here: its USB device
-  # rules below (fingerprint reader, HDMI card) have no PPD equivalent.
+  # asserts PPD and TLP are mutually exclusive. TLP wins here because it carries
+  # the shared AC/BAT policy suite in profiles/laptop-hardware.nix (EPP, platform
+  # profile, PCIe ASPM, runtime PM), which PPD does not replicate.
   services.power-profiles-daemon.enable = false;
 
   services.tlp.settings = {
     # Goodix fingerprint reader (27c6:609c): autosuspend causes fprintd to miss the first auth attempt.
-    USB_EXCLUDE_DEVICES = "27c6:609c";
+    USB_DENYLIST = "27c6:609c";
     # HDMI Expansion Card (32ac:0002): force autosuspend to stop the ~1W idle drain.
     USB_ALLOWLIST = "32ac:0002";
-    # laptop-hardware.nix sets SOUND_POWER_SAVE_ON_AC=0, which would undo the snd_hda_intel power_save=60
-    # above on AC. Force 60s on both to keep C10 reachable and avoid pop/click at 1s (TLP's BAT default).
-    SOUND_POWER_SAVE_ON_AC = lib.mkForce 60;
-    SOUND_POWER_SAVE_ON_BAT = lib.mkForce 60;
   };
 
-  services.udev.packages = [ pkgs.platformio-core ];
+  services.udev.packages = [ pkgs.platformio-core.udev ];
   services.udev.extraRules = ''
-    # wakeOnLan only covers the network stack; this disables PCI-level wakeup for the AX210
-    # (8086:2725) so the card can enter D3cold at idle.
+    # Disable PCI-level wakeup for the AX210 (8086:2725) so the card can enter D3cold at idle.
     ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x8086", ATTR{device}=="0x2725", ATTR{power/wakeup}="disabled"
     SUBSYSTEMS=="usb", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", GROUP="dialout", MODE="0660"
   '';
@@ -94,13 +80,15 @@ in
 
   # "steady" uses a 60s moving average and a flat 15% zone up to 60°C (idle is ~45–55°C),
   # which stops the audible fan cycling caused by "agile"'s 15s average reacting to small temp swings.
-  # "agile" is retained so `fw-fanctrl use agile` works at runtime.
-  environment.etc."fw-fanctrl/config.json".text = builtins.toJSON {
-    "\$schema" = "./config.schema.json";
-    defaultStrategy = "steady";
-    strategyOnDischarging = "";
-    strategies = {
-      steady = {
+  # The module merges this over the package's default config, so the stock
+  # strategies (including "agile") stay available for `fw-fanctrl use` at runtime.
+  # It also installs fw-fanctrl/fw-ectool, restores EC auto fan control on
+  # service stop (ExecStopPost autofanctrl), and adds the suspend/resume hook.
+  hardware.fw-fanctrl = {
+    enable = true;
+    config = {
+      defaultStrategy = "steady";
+      strategies.steady = {
         fanSpeedUpdateFrequency = 5;
         movingAverageInterval = 60;
         speedCurve = [
@@ -110,46 +98,23 @@ in
           { temp = 90; speed = 100; }
         ];
       };
-      agile = {
-        fanSpeedUpdateFrequency = 3;
-        movingAverageInterval = 15;
-        speedCurve = [
-          { temp = 0; speed = 15; }
-          { temp = 40; speed = 15; }
-          { temp = 60; speed = 30; }
-          { temp = 70; speed = 40; }
-          { temp = 75; speed = 80; }
-          { temp = 85; speed = 100; }
-        ];
-      };
     };
   };
 
-  systemd.services.fw-fanctrl = {
-    description = "Framework Fan Controller";
-    wantedBy = [ "multi-user.target" ];
-    after = [ "multi-user.target" ];
-    path = [ pkgs.fw-ectool ];
-    serviceConfig = {
-      ExecStart = "${pkgs.fw-fanctrl}/bin/fw-fanctrl run --silent steady";
-      Restart = "on-failure";
-      RestartSec = "5s";
-      NoNewPrivileges = true;
-      PrivateTmp = true;
-      ProtectHome = true;
-      ProtectClock = true;
-      ProtectHostname = true;
-      ProtectKernelLogs = true;
-      ProtectKernelModules = true;
-      ProtectControlGroups = true;
-      RestrictNamespaces = true;
-      LockPersonality = true;
-    };
+  # Hardening overlay on the upstream unit (the module only sets
+  # ExecStart/Restart/ExecStopPost, so these merge cleanly).
+  systemd.services.fw-fanctrl.serviceConfig = {
+    NoNewPrivileges = true;
+    PrivateTmp = true;
+    ProtectHome = true;
+    ProtectClock = true;
+    ProtectHostname = true;
+    ProtectKernelLogs = true;
+    ProtectKernelModules = true;
+    ProtectControlGroups = true;
+    RestrictNamespaces = true;
+    LockPersonality = true;
   };
-
-  # fw-ectool: the fw-fanctrl unit gets it via `path`, but keep the CLI in
-  # PATH for interactive EC poking too.
-  environment.systemPackages = with pkgs; [ fw-fanctrl fw-ectool ];
 
   system.stateVersion = "24.11";
 
