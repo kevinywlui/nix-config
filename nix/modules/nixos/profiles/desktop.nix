@@ -89,13 +89,8 @@
 
   users.users.klui.extraGroups = [ "video" ];
 
-  hardware.graphics = {
-    enable = true;
-    extraPackages = with pkgs; [
-      intel-media-driver
-      vpl-gpu-rt
-    ];
-  };
+  # VAAPI comes from Mesa's radeonsi, bundled with hardware.graphics.
+  hardware.graphics.enable = true;
 
   services.psd.enable = true;
 

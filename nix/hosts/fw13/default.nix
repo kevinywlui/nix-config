@@ -53,19 +53,24 @@ in
   boot.loader.systemd-boot.configurationLimit = 10;
   boot.loader.efi.canTouchEfiVariables = true;
   boot.loader.timeout = 1;
+  # GPU params (amdgpu in initrd, PSR-hang workaround) come from
+  # nixos-hardware's framework-amd-ai-300-series module.
   boot.kernelParams = [
-    "nvme.noacpi=1" # workaround: NVMe ACPI power management conflicts with FW13 Intel Core Ultra, causes boot failures
     "rng_core.default_quality=0" # stop hwrng from polling tpm-rng-0; entropy pool is kept full by RDRAND/RDSEED
     "nmi_watchdog=0" # reduce CPU wakeups; NMI watchdog is only useful in server/debug contexts
-    "i915.enable_psr=1" # Panel Self Refresh
-    "i915.enable_fbc=1" # Framebuffer Compression (~0.4W savings; risk: rare screen flickering)
-    "i915.enable_guc=3" # GuC/HuC firmware for GPU scheduling and power management
   ];
-  # 60s lets the CPU reach C10 during silence; short enough to avoid pop/click at session start.
+  # 60s lets the HDA codec runtime-suspend during silence (the AMD HDA
+  # controller is driven by snd_hda_intel); short enough to avoid pop/click
+  # at session start.
   boot.extraModprobeConfig = "options snd_hda_intel power_save=60";
   # Reduce writeback wakeups by stretching the flush interval from 5s to 15s.
   boot.kernel.sysctl."vm.dirty_writeback_centisecs" = 1500;
-  networking.interfaces.wlp170s0.wakeOnLan.enable = false;
+  networking.interfaces.wlp192s0.wakeOnLan.enable = false;
+
+  # nixos-hardware's AMD module defaults power-profiles-daemon on, but nixpkgs
+  # asserts PPD and TLP are mutually exclusive. TLP wins here: its USB device
+  # rules below (fingerprint reader, HDMI card) have no PPD equivalent.
+  services.power-profiles-daemon.enable = false;
 
   services.tlp.settings = {
     # Goodix fingerprint reader (27c6:609c): autosuspend causes fprintd to miss the first auth attempt.
@@ -81,7 +86,7 @@ in
   services.udev.packages = [ pkgs.platformio-core ];
   services.udev.extraRules = ''
     # wakeOnLan only covers the network stack; this disables PCI-level wakeup for the AX210
-    # (8086:2725) so the card can enter D3cold and the CPU can reach C10.
+    # (8086:2725) so the card can enter D3cold at idle.
     ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x8086", ATTR{device}=="0x2725", ATTR{power/wakeup}="disabled"
     SUBSYSTEMS=="usb", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", GROUP="dialout", MODE="0660"
   '';
@@ -142,7 +147,9 @@ in
     };
   };
 
-  environment.systemPackages = with pkgs; [ fw-fanctrl ];
+  # fw-ectool: the fw-fanctrl unit gets it via `path`, but keep the CLI in
+  # PATH for interactive EC poking too.
+  environment.systemPackages = with pkgs; [ fw-fanctrl fw-ectool ];
 
   system.stateVersion = "24.11";
 

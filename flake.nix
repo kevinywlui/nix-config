@@ -71,7 +71,7 @@
     in
     {
       nixosConfigurations.fw13 = mkHost {
-        hwModule = nixos-hardware.nixosModules.framework-intel-core-ultra-series1;
+        hwModule = nixos-hardware.nixosModules.framework-amd-ai-300-series;
         hostModule = ./nix/hosts/fw13;
       };
 

@@ -8,5 +8,5 @@
   # boot.initrd.systemd.enable is set for all hosts in modules/nixos/profiles/core.nix.
 
   # Boot-critical kernel modules (nvme, xhci_pci, etc.) are supplied by
-  # nixos-hardware.nixosModules.framework-intel-core-ultra-series1 in flake.nix.
+  # nixos-hardware.nixosModules.framework-amd-ai-300-series in flake.nix.
 }

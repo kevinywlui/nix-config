@@ -1,19 +1,19 @@
 { pkgs, ... }:
 
 {
-  # i915 in initrd enables early KMS
-  boot.initrd.availableKernelModules = [ "i915" ];
+  # This profile is shared across Intel and AMD hosts — vendor-specific bits
+  # (early-KMS initrd modules, thermald, microcode) belong in per-host config
+  # or the host's nixos-hardware module, not here.
 
   services.fwupd.enable = true;
-  services.thermald.enable = true;
   services.upower.enable = true;
 
   services.tlp = {
     enable = true;
     settings = {
-      # "powersave" does NOT mean low-performance — on Intel it defers to EPP
-      # and platform profile for tuning. "performance" would pin frequency high
-      # and defeat the EPP settings below.
+      # "powersave" does NOT mean low-performance — on both intel_pstate and
+      # amd_pstate=active it defers to EPP and platform profile for tuning.
+      # "performance" would pin frequency high and defeat the EPP settings below.
       CPU_SCALING_GOVERNOR_ON_AC = "powersave";
       CPU_SCALING_GOVERNOR_ON_BAT = "powersave";
 
